@@ -1,0 +1,50 @@
+"""DRF helpers that keep media upload writable while returning safe URLs."""
+
+from __future__ import annotations
+
+from rest_framework import serializers
+
+from apps.common.media_utils import absolute_media_url, resolve_existing_relpath
+
+
+class SafeMediaRepresentationMixin:
+    """
+    Mixin for ModelSerializers: after normal serialization, rewrite listed
+    FileField/ImageField keys so the URL always resolves to an existing file
+    (alias or placeholder). Uploads still use the normal ImageField.
+    """
+
+    safe_media_fields: tuple[str, ...] = ()
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        for field_name in getattr(self, "safe_media_fields", ()):
+            val = getattr(instance, field_name, None)
+            name = getattr(val, "name", None) if val else None
+            if not name:
+                data[field_name] = data.get(field_name) or None
+                continue
+            rel = resolve_existing_relpath(name)
+            data[field_name] = absolute_media_url(request, rel) if rel else None
+        return data
+
+
+class SafeMediaURLField(serializers.Field):
+    """Read-only absolute media URL with alias/placeholder fallback."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("read_only", True)
+        kwargs.setdefault("allow_null", True)
+        super().__init__(**kwargs)
+
+    def to_representation(self, value):
+        if not value:
+            return None
+        name = getattr(value, "name", None) or str(value)
+        if not name:
+            return None
+        rel = resolve_existing_relpath(name)
+        if not rel:
+            return None
+        return absolute_media_url(self.context.get("request"), rel)
