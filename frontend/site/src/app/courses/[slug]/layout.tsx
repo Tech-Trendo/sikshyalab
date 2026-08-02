@@ -1,0 +1,16 @@
+import type { Metadata } from "next";
+import { getPageMetadata } from "@/lib/seo";
+
+type Props = { params: Promise<{ slug: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params;
+  return getPageMetadata(`/courses/${slug}`, {
+    title: slug.replace(/-/g, " "),
+    description: "Explore this ShikshaLab course — curriculum, outcomes, and enrollment.",
+  });
+}
+
+export default function CourseSlugLayout({ children }: { children: React.ReactNode }) {
+  return children;
+}
