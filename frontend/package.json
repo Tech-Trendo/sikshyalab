@@ -1,0 +1,17 @@
+{
+  "name": "shikshalab-frontend",
+  "private": true,
+  "workspaces": [
+    "site",
+    "dashboard",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:site": "npm run dev -w @shikshalab/site",
+    "dev:dashboard": "npm run dev -w @shikshalab/dashboard",
+    "dev": "npm run dev:site",
+    "build:site": "npm run build -w @shikshalab/site",
+    "build:dashboard": "npm run build -w @shikshalab/dashboard",
+    "test:dashboard": "npm run test -w @shikshalab/dashboard"
+  }
+}
