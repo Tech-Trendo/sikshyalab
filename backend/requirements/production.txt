@@ -1,0 +1,6 @@
+-r base.txt
+
+# Production hardening
+sentry-sdk>=2.0
+django-redis>=5.4
+gevent>=24.0

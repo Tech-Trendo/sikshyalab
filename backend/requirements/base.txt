@@ -1,0 +1,31 @@
+# Django core
+Django>=6.0,<6.1
+djangorestframework>=3.15,<4.0
+djangorestframework-simplejwt>=5.3,<6.0
+django-filter>=24.0
+django-cors-headers>=4.3
+drf-spectacular>=0.27
+django-auditlog>=3.0
+django-extensions>=3.2
+whitenoise>=6.6
+
+# Database & cache
+psycopg2-binary>=2.9
+redis>=5.0
+
+# Config & utilities
+python-decouple>=3.8
+Pillow>=10.0
+qrcode>=7.4
+django-storages>=1.14
+
+# Task queue
+celery>=5.3
+
+# Real-time (WebSockets)
+channels>=4.0
+channels-redis>=4.2
+daphne>=4.0
+
+# Production server
+gunicorn>=22.0
