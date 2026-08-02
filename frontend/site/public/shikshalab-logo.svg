@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ShikshaLab">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#244777"/>
+      <stop offset="100%" stop-color="#3a6bab"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#g)"/>
+  <path fill="#f59e0d" d="M18 40V24h6.2l5.1 9.4V24H36v16h-6.1l-5.2-9.6V40H18z"/>
+  <path fill="#fff" d="M38 40V24h5.2c3.6 0 6 2.2 6 5.5 0 2.3-1.1 4-3 4.8L51 40h-5.8l-3.9-5.2H43V40H38zm5-9.2h1.1c1.2 0 1.9-.6 1.9-1.6 0-1-.7-1.6-1.9-1.6H43v3.2z"/>
+</svg>
