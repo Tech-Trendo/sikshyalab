@@ -4,7 +4,7 @@ Remove demo / seed content from the database (site + dashboard data).
 
 Keeps: roles, non-demo user accounts, migrations.
 Deletes: CMS content, courses/catalog, students/teachers/batches, certificates,
-         assignments, tasks, fees, enrollments, attendance, notifications,
+         assignments, tasks, fees, enrollments, notifications,
          analytics reports, SEO pages, and @shikshalab.demo users.
 
 Usage (from backend/, venv active):
@@ -84,25 +84,6 @@ def main() -> None:
         _wipe("board tasks", BoardTask)
     except Exception as exc:
         print(f"  tasks: skip ({exc})")
-
-    # Attendance
-    try:
-        from apps.attendance.models import (
-            AttendanceSession,
-            MonthlyAttendanceSummary,
-            StudentAttendance,
-            TeacherAttendance,
-        )
-
-        for label, model in (
-            ("monthly attendance", MonthlyAttendanceSummary),
-            ("student attendance", StudentAttendance),
-            ("teacher attendance", TeacherAttendance),
-            ("attendance sessions", AttendanceSession),
-        ):
-            _wipe(label, model)
-    except Exception as exc:
-        print(f"  attendance: skip ({exc})")
 
     # Fees
     try:

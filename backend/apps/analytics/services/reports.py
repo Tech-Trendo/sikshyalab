@@ -211,63 +211,6 @@ def revenue_summary(months: int = 12, user=None) -> dict:
     }
 
 
-def attendance_reports(user=None, days: int = 30) -> dict:
-    StudentAttendance = _get_model("attendance.StudentAttendance")
-    scope = teacher_scope_filters(user) if user is not None else None
-    since = timezone.localdate() - timedelta(days=days)
-
-    by_status = {}
-    total = 0
-    rate = 0.0
-    daily = []
-
-    if StudentAttendance:
-        try:
-            qs = StudentAttendance.objects.filter(date__gte=since)
-            if hasattr(StudentAttendance, "is_deleted"):
-                qs = qs.filter(is_deleted=False)
-            if scope and scope.get("teacher"):
-                qs = qs.filter(batch__teacher=scope["teacher"])
-
-            total = qs.count()
-            for row in qs.values("status").annotate(count=Count("id")):
-                by_status[row["status"]] = row["count"]
-
-            present = sum(by_status.get(s, 0) for s in ("PRESENT", "LATE", "HALF_DAY"))
-            rate = round((present / total) * 100, 2) if total else 0.0
-
-            for row in (
-                qs.values("date")
-                .annotate(
-                    total=Count("id"),
-                    present=Count("id", filter=Q(status__in=["PRESENT", "LATE", "HALF_DAY"])),
-                )
-                .order_by("date")
-            ):
-                d = row["date"]
-                daily.append(
-                    {
-                        "date": d.isoformat() if hasattr(d, "isoformat") else str(d),
-                        "total": row["total"],
-                        "present": row["present"],
-                        "rate": round((row["present"] / row["total"]) * 100, 2)
-                        if row["total"]
-                        else 0.0,
-                    }
-                )
-        except Exception:
-            logger.exception("Attendance reports failed")
-
-    return {
-        "days": days,
-        "since": since.isoformat(),
-        "total_records": total,
-        "by_status": by_status,
-        "attendance_rate": rate,
-        "daily": daily,
-    }
-
-
 def assignment_completion(user=None) -> dict:
     Assignment = _get_model("assignments.Assignment")
     Submission = _get_model("assignments.Submission")
@@ -388,7 +331,6 @@ def teacher_performance(user=None) -> list[dict]:
     Batch = _get_model("batches.Batch")
     Assignment = _get_model("assignments.Assignment")
     Enrollment = _get_model("enrollments.Enrollment")
-    StudentAttendance = _get_model("attendance.StudentAttendance")
 
     if Teacher is None:
         return []
@@ -410,7 +352,6 @@ def teacher_performance(user=None) -> list[dict]:
             ongoing = 0
             assignments_count = 0
             enrollments_count = 0
-            attendance_rate = None
 
             if Batch:
                 bqs = Batch.objects.filter(teacher=teacher)
@@ -434,20 +375,6 @@ def teacher_performance(user=None) -> list[dict]:
                 except Exception:
                     enrollments_count = 0
 
-            if StudentAttendance:
-                try:
-                    aqs = StudentAttendance.objects.filter(batch__teacher=teacher)
-                    if hasattr(StudentAttendance, "is_deleted"):
-                        aqs = aqs.filter(is_deleted=False)
-                    total = aqs.count()
-                    if total:
-                        present = aqs.filter(
-                            status__in=["PRESENT", "LATE", "HALF_DAY"]
-                        ).count()
-                        attendance_rate = round((present / total) * 100, 2)
-                except Exception:
-                    attendance_rate = None
-
             results.append(
                 {
                     "teacher_id": getattr(teacher, "teacher_id", str(teacher.pk)),
@@ -460,7 +387,6 @@ def teacher_performance(user=None) -> list[dict]:
                     "ongoing_batches": ongoing,
                     "assignments": assignments_count,
                     "enrollments": enrollments_count,
-                    "attendance_rate": attendance_rate,
                     "status": getattr(teacher, "status", None),
                 }
             )

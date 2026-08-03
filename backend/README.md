@@ -2,6 +2,18 @@
 
 Production-ready Django REST API for **ShikshaLab** — a learning management system for institutes covering courses, batches, enrollments, fees, attendance, assignments, certificates, CMS, notifications, and analytics.
 
+## Split with frontend
+
+Frontend lives in a **separate folder/PC** (`Shikshalab.com/frontend`). Backend developers only need this repo.
+
+```powershell
+# Bind to all interfaces so a frontend friend on the LAN can connect
+python manage.py runserver 0.0.0.0:8000
+```
+
+Give them your LAN IP, e.g. `http://192.168.x.x:8000/api/v1`.  
+In development, `CORS_ALLOW_ALL_ORIGINS=True` is already the default.
+
 ## Architecture
 
 ```

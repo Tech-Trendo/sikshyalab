@@ -62,7 +62,6 @@ LOCAL_APPS = [
     "apps.enrollments",
     "apps.fees",
     "apps.assignments",
-    "apps.attendance",
     "apps.certificates",
     "apps.cms",
     "apps.seo",
@@ -255,7 +254,7 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "ShikshaLab API",
     "DESCRIPTION": (
         "ShikshaLab Learning Management System API. "
-        "Manage courses, batches, enrollments, fees, attendance, "
+        "Manage courses, batches, enrollments, fees, "
         "assignments, certificates, and more."
     ),
     "VERSION": "1.0.0",
@@ -284,7 +283,6 @@ SPECTACULAR_SETTINGS = {
         {"name": "Enrollments", "description": "Student enrollments"},
         {"name": "Fees", "description": "Fee plans & payments"},
         {"name": "Assignments", "description": "Assignments & submissions"},
-        {"name": "Attendance", "description": "Attendance tracking"},
         {"name": "Certificates", "description": "Certificate issuance"},
         {"name": "CMS", "description": "Content management pages"},
         {"name": "SEO", "description": "SEO metadata"},

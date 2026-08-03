@@ -32,14 +32,6 @@ def _months_param(request, default=12, maximum=36) -> int:
     return max(1, min(months, maximum))
 
 
-def _days_param(request, default=30, maximum=365) -> int:
-    try:
-        days = int(request.query_params.get("days", default))
-    except (TypeError, ValueError):
-        days = default
-    return max(1, min(days, maximum))
-
-
 class AnalyticsViewSet(viewsets.ViewSet):
     """
     Analytics endpoints under /api/v1/analytics/.
@@ -48,7 +40,6 @@ class AnalyticsViewSet(viewsets.ViewSet):
     - GET enrollments/trends/?months=12
     - GET students/growth/
     - GET revenue/summary/
-    - GET attendance/reports/
     - GET assignments/completion/
     - GET certificates/stats/
     - GET teachers/performance/
@@ -84,12 +75,6 @@ class AnalyticsViewSet(viewsets.ViewSet):
         months = _months_param(request)
         data = analytics_services.revenue_summary(months=months, user=request.user)
         return success_response(data=data, message="Revenue summary.")
-
-    @action(detail=False, methods=["get"], url_path="attendance/reports")
-    def attendance_reports(self, request):
-        days = _days_param(request)
-        data = analytics_services.attendance_reports(user=request.user, days=days)
-        return success_response(data=data, message="Attendance reports.")
 
     @action(detail=False, methods=["get"], url_path="assignments/completion")
     def assignment_completion(self, request):
@@ -202,17 +187,6 @@ class RevenueSummaryView(APIView):
         return success_response(
             data=analytics_services.revenue_summary(months=months, user=request.user),
             message="Revenue summary.",
-        )
-
-
-class AttendanceReportsView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminOrTeacherAnalytics]
-
-    def get(self, request):
-        days = _days_param(request)
-        return success_response(
-            data=analytics_services.attendance_reports(user=request.user, days=days),
-            message="Attendance reports.",
         )
 
 

@@ -18,7 +18,6 @@ from apps.analytics.services.dashboards import (
 )
 from apps.analytics.services.reports import (
     assignment_completion,
-    attendance_reports,
     certificate_stats,
     enrollment_trends,
     revenue_summary,
@@ -29,7 +28,6 @@ from apps.analytics.services.reports import (
 __all__ = [
     "admin_dashboard_summary",
     "assignment_completion",
-    "attendance_reports",
     "certificate_stats",
     "dashboard_stats",
     "enrollment_trends",

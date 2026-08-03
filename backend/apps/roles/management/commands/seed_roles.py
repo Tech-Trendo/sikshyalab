@@ -27,7 +27,6 @@ MODULES = (
     ("enrollments", "Enrollments"),
     ("fees", "Fees"),
     ("assignments", "Assignments"),
-    ("attendance", "Attendance"),
     ("certificates", "Certificates"),
     ("cms", "CMS"),
     ("seo", "SEO"),
@@ -72,9 +71,6 @@ EXTRA_PERMISSIONS = [
     # assignments
     ("assignments.grade", "Grade Assignments", "assignments", "Grade student submissions"),
     ("assignments.submit", "Submit Assignments", "assignments", "Submit assignment work"),
-    # attendance
-    ("attendance.mark", "Mark Attendance", "attendance", "Mark daily/class attendance"),
-    ("attendance.view_reports", "View Attendance Reports", "attendance", "View attendance summaries"),
     # certificates
     ("certificates.generate", "Generate Certificates", "certificates", "Generate course certificates"),
     ("certificates.verify", "Verify Certificates", "certificates", "Verify certificate authenticity"),
@@ -100,7 +96,7 @@ SYSTEM_ROLES = {
         "all_permissions": True,
     },
     "Teacher": {
-        "description": "Manage assigned courses, batches, content, assignments, and attendance.",
+        "description": "Manage assigned courses, batches, content, and assignments.",
         "permissions": [
             "accounts.view",
             "students.view",
@@ -120,9 +116,6 @@ SYSTEM_ROLES = {
             "assignments.create",
             "assignments.update",
             "assignments.grade",
-            "attendance.view",
-            "attendance.mark",
-            "attendance.view_reports",
             "certificates.view",
             "notifications.view",
             "notifications.send",
@@ -144,7 +137,6 @@ SYSTEM_ROLES = {
             "fees.view",
             "assignments.view",
             "assignments.submit",
-            "attendance.view",
             "certificates.view",
             "certificates.verify",
             "notifications.view",

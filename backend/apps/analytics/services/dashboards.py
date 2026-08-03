@@ -24,7 +24,6 @@ def _admin_dashboard() -> dict:
     Enrollment = _get_model("enrollments.Enrollment")
     Payment = _get_model("fees.Payment")
     Certificate = _get_model("certificates.Certificate")
-    StudentAttendance = _get_model("attendance.StudentAttendance")
 
     students = _safe_count(Student)
     teachers = _safe_count(Teacher)
@@ -51,21 +50,6 @@ def _admin_dashboard() -> dict:
 
     certificates_issued = _safe_count(Certificate)
 
-    attendance_rate = None
-    if StudentAttendance:
-        try:
-            qs = StudentAttendance.objects.all()
-            if hasattr(StudentAttendance, "is_deleted"):
-                qs = qs.filter(is_deleted=False)
-            total = qs.count()
-            if total:
-                present = qs.filter(status__in=["PRESENT", "LATE", "HALF_DAY"]).count()
-                attendance_rate = round((present / total) * 100, 2)
-            else:
-                attendance_rate = 0.0
-        except Exception:
-            attendance_rate = None
-
     return {
         "role": "admin",
         "students": students,
@@ -75,7 +59,6 @@ def _admin_dashboard() -> dict:
         "pending_enrollments": pending_enrollments,
         "revenue_this_month": str(revenue_this_month),
         "certificates_issued": certificates_issued,
-        "attendance_rate": attendance_rate,
         "kpis": {
             "total_students": students,
             "active_batches": active_batches,
@@ -252,7 +235,6 @@ def _teacher_dashboard(user) -> dict:
         "pending_enrollments": 0,
         "revenue_this_month": "0.00",
         "certificates_issued": 0,
-        "attendance_rate": None,
     }
 
 
@@ -423,7 +405,6 @@ def _student_dashboard(user) -> dict:
         "pending_enrollments": 0,
         "revenue_this_month": "0.00",
         "certificates_issued": certificates,
-        "attendance_rate": None,
     }
 
 

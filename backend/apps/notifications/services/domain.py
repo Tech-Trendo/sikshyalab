@@ -206,12 +206,6 @@ def ensure_inbox_seeded(user) -> list[Notification]:
                 "action_url": "/dashboard/assignments",
             },
             {
-                "title": "Mark today’s attendance",
-                "message": "Record present/absent for your ongoing batches.",
-                "notification_type": Notification.NotificationType.ATTENDANCE,
-                "action_url": "/dashboard/students",
-            },
-            {
                 "title": "Upload course resources",
                 "message": "Add notes or PDFs for this week’s chapters.",
                 "notification_type": Notification.NotificationType.SYSTEM,

@@ -4,7 +4,6 @@ from rest_framework.routers import DefaultRouter
 from apps.analytics.views import (
     AdminDashboardAnalyticsView,
     AssignmentCompletionView,
-    AttendanceReportsView,
     CertificateStatsView,
     DashboardAnalyticsView,
     EnrollmentTrendsView,
@@ -41,11 +40,6 @@ urlpatterns = [
     ),
     path("students/growth/", StudentGrowthView.as_view(), name="student-growth"),
     path("revenue/summary/", RevenueSummaryView.as_view(), name="revenue-summary"),
-    path(
-        "attendance/reports/",
-        AttendanceReportsView.as_view(),
-        name="attendance-reports",
-    ),
     path(
         "assignments/completion/",
         AssignmentCompletionView.as_view(),

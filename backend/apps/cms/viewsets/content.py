@@ -44,28 +44,20 @@ from apps.common.responses import success_response
 
 
 class EventFilter(filters.FilterSet):
-    """Public course pages pass course_slug to find related events."""
+    """
+    Filter events by course association.
 
-    course_slug = filters.CharFilter(method="filter_course_slug")
+    Preferred: courseId / course_id / course (UUID of the related Course).
+    Legacy: course_slug (exact match on related course.slug only).
+    """
+
+    courseId = filters.UUIDFilter(field_name="course_id")
+    course_id = filters.UUIDFilter(field_name="course_id")
+    course_slug = filters.CharFilter(field_name="course__slug")
 
     class Meta:
         model = Event
         fields = ["is_published", "location", "course", "course__slug"]
-
-    def filter_course_slug(self, queryset, name, value):
-        slug = (value or "").strip()
-        if not slug:
-            return queryset
-        q = Q(course__slug=slug) | Q(slug=slug)
-        try:
-            from apps.courses.models import Course
-
-            course = Course.objects.filter(slug=slug).only("title").first()
-            if course and course.title:
-                q |= Q(title__iexact=course.title)
-        except Exception:
-            pass
-        return queryset.filter(q).distinct()
 
 
 class GalleryItemFilter(filters.FilterSet):
