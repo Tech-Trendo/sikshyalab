@@ -86,7 +86,7 @@ export function EventCard({
           </div>
         </div>
 
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+        <div className="sl-card-cta-pair mt-4">
           <button
             type="button"
             onClick={(e) => {
@@ -94,14 +94,14 @@ export function EventCard({
               e.stopPropagation();
               onRegister?.();
             }}
-            className="sl-hero-btn sl-hero-btn--no-color-hover !h-11 !min-h-11 w-full !px-4 !text-sm sm:!flex-1"
+            className="sl-card-cta sl-card-cta--primary"
           >
             Register now
           </button>
           <Link
             href={detailHref}
             onClick={(e) => e.stopPropagation()}
-            className="sl-hero-btn sl-hero-btn--yellow sl-hero-btn--no-color-hover !h-11 !min-h-11 w-full !px-4 !text-sm sm:!flex-1"
+            className="sl-card-cta sl-card-cta--secondary"
           >
             Learn more
           </Link>
