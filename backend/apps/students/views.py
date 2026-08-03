@@ -121,6 +121,11 @@ class StudentViewSet(viewsets.ModelViewSet):
             description="Student profile soft-deleted.",
             performed_by=request.user,
         )
+        user = instance.user
+        if user.is_active or user.is_active_account:
+            user.is_active = False
+            user.is_active_account = False
+            user.save(update_fields=["is_active", "is_active_account", "updated_at"])
         return super().destroy(request, *args, **kwargs)
 
     @action(detail=False, methods=["get", "patch"], url_path="me")

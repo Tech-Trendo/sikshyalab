@@ -16,6 +16,26 @@ from apps.students.models import (
 User = get_user_model()
 
 
+def sync_student_login_access(student: Student, *, status: str | None = None) -> None:
+    """Enable/disable the linked User based on student status."""
+    next_status = status if status is not None else student.status
+    user = getattr(student, "user", None)
+    if user is None:
+        return
+
+    allow_login = next_status not in Student.LOGIN_BLOCKED_STATUSES
+    updates: list[str] = []
+    if user.is_active != allow_login:
+        user.is_active = allow_login
+        updates.append("is_active")
+    if user.is_active_account != allow_login:
+        user.is_active_account = allow_login
+        updates.append("is_active_account")
+    if updates:
+        updates.append("updated_at")
+        user.save(update_fields=list(dict.fromkeys(updates)))
+
+
 class StudentUserBriefSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source="get_full_name", read_only=True)
     provisional_password = serializers.SerializerMethodField()
@@ -220,6 +240,16 @@ class StudentSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    def validate_status(self, value):
+        request = self.context.get("request")
+        user = getattr(request, "user", None) if request else None
+        if self.instance and value != self.instance.status:
+            from apps.common.permissions import ROLE_ADMIN, ROLE_STAFF, user_has_role
+
+            if not user or not user_has_role(user, ROLE_ADMIN, ROLE_STAFF):
+                raise serializers.ValidationError("Only admins can change student status.")
+        return value
+
     def validate_user_id(self, value):
         if self.instance is None and Student.objects.filter(user=value).exists():
             raise serializers.ValidationError("This user already has a student profile.")
@@ -231,7 +261,9 @@ class StudentSerializer(serializers.ModelSerializer):
         user = validated_data.get("user")
         if user is None:
             raise serializers.ValidationError({"user_id": "This field is required."})
-        return super().create(validated_data)
+        student = super().create(validated_data)
+        sync_student_login_access(student)
+        return student
 
     def update(self, instance, validated_data):
         name = (validated_data.pop("name", None) or "").strip()
@@ -239,6 +271,7 @@ class StudentSerializer(serializers.ModelSerializer):
         last_name = validated_data.pop("last_name", None)
         phone = validated_data.pop("phone", serializers.empty)
         email = validated_data.pop("email", None)
+        status_changed = "status" in validated_data and validated_data["status"] != instance.status
 
         user = instance.user
         user_updates: list[str] = []
@@ -270,4 +303,7 @@ class StudentSerializer(serializers.ModelSerializer):
             user_updates.append("updated_at")
             user.save(update_fields=list(dict.fromkeys(user_updates)))
 
-        return super().update(instance, validated_data)
+        student = super().update(instance, validated_data)
+        if status_changed:
+            sync_student_login_access(student)
+        return student

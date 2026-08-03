@@ -1,5 +1,6 @@
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 
 from apps.accounts.models import ActivityLog, UserProfile, UserSettings
@@ -386,6 +387,23 @@ class LoginSerializer(serializers.Serializer):
 
         if not user.is_active or not user.is_active_account:
             raise serializers.ValidationError("This account is inactive.")
+
+        student_profile = None
+        try:
+            student_profile = user.student_profile
+        except ObjectDoesNotExist:
+            student_profile = None
+
+        if student_profile is not None:
+            from apps.students.models import Student
+
+            if student_profile.status in Student.LOGIN_BLOCKED_STATUSES:
+                # Heal legacy rows deactivated before login sync existed.
+                if user.is_active or user.is_active_account:
+                    user.is_active = False
+                    user.is_active_account = False
+                    user.save(update_fields=["is_active", "is_active_account", "updated_at"])
+                raise serializers.ValidationError("This account is inactive.")
 
         attrs["user"] = user
         attrs["email"] = email

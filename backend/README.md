@@ -1,4 +1,4 @@
-# ShikshaLab Backend
+ # ShikshaLab Backend
 
 Production-ready Django REST API for **ShikshaLab** — a learning management system for institutes covering courses, batches, enrollments, fees, attendance, assignments, certificates, CMS, notifications, and analytics.
 

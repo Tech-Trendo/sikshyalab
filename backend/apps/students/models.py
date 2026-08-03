@@ -19,6 +19,15 @@ class Student(BaseModel):
         GRADUATED = "GRADUATED", _("Graduated")
         DROPPED = "DROPPED", _("Dropped")
 
+    # Statuses that disable the linked user account login.
+    LOGIN_BLOCKED_STATUSES = frozenset(
+        {
+            Status.DROPPED,
+            Status.INACTIVE,
+            Status.SUSPENDED,
+        }
+    )
+
     class BloodGroup(models.TextChoices):
         A_POS = "A+", _("A+")
         A_NEG = "A-", _("A-")
