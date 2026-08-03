@@ -15,18 +15,6 @@ class Student(BaseModel):
     class Status(models.TextChoices):
         ACTIVE = "ACTIVE", _("Active")
         INACTIVE = "INACTIVE", _("Inactive")
-        SUSPENDED = "SUSPENDED", _("Suspended")
-        GRADUATED = "GRADUATED", _("Graduated")
-        DROPPED = "DROPPED", _("Dropped")
-
-    # Statuses that disable the linked user account login.
-    LOGIN_BLOCKED_STATUSES = frozenset(
-        {
-            Status.DROPPED,
-            Status.INACTIVE,
-            Status.SUSPENDED,
-        }
-    )
 
     class BloodGroup(models.TextChoices):
         A_POS = "A+", _("A+")
@@ -51,6 +39,14 @@ class Student(BaseModel):
         choices=Status.choices,
         default=Status.ACTIVE,
         db_index=True,
+    )
+    deactivated_at = models.DateTimeField(null=True, blank=True)
+    deactivated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="deactivated_students",
     )
     blood_group = models.CharField(
         max_length=10,

@@ -43,9 +43,20 @@ class ProfileView(generics.RetrieveUpdateAPIView):
         return Response(serializer.data)
 
     def update(self, request, *args, **kwargs):
-        # Multipart avatar upload → save under MEDIA_ROOT/avatars/
+        # Multipart avatar upload → storage (local or S3)
         avatar_file = request.FILES.get("avatar") or request.FILES.get("profile_image")
         if avatar_file:
+            from django.core.exceptions import ValidationError as DjangoValidationError
+
+            from apps.common.file_validators import validate_uploaded_file
+
+            try:
+                validate_uploaded_file(avatar_file, kind="image")
+            except DjangoValidationError as exc:
+                return Response(
+                    {"detail": "; ".join(exc.messages)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             user = request.user
             user.avatar = avatar_file
             user.save(update_fields=["avatar"])

@@ -63,8 +63,8 @@ class StudentAdmin(admin.ModelAdmin):
         "emergency_contact_name",
         "emergency_contact_phone",
     )
-    raw_id_fields = ("user",)
-    readonly_fields = ("id", "created_at", "updated_at", "deleted_at")
+    raw_id_fields = ("user", "deactivated_by")
+    readonly_fields = ("id", "created_at", "updated_at", "deleted_at", "deactivated_at", "deactivated_by")
     inlines = [GuardianInline, AcademicHistoryInline, StudentDocumentInline]
     fieldsets = (
         (
@@ -76,6 +76,8 @@ class StudentAdmin(admin.ModelAdmin):
                     "student_id",
                     "enrollment_number",
                     "status",
+                    "deactivated_at",
+                    "deactivated_by",
                     "admission_date",
                     "profile_completed",
                 )

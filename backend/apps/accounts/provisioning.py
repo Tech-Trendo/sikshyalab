@@ -48,13 +48,8 @@ def _ensure_student_profile(user) -> None:
     if existing:
         if existing.is_deleted:
             existing.restore()
-        if existing.status in (
-            Student.Status.DROPPED,
-            Student.Status.INACTIVE,
-            Student.Status.SUSPENDED,
-        ):
-            existing.status = Student.Status.ACTIVE
-            existing.save(update_fields=["status", "updated_at"])
+        # Do NOT auto-reactivate INACTIVE students here — admin deactivation
+        # must persist until an explicit reactivate/provision decision.
         return
 
     Student.objects.create(

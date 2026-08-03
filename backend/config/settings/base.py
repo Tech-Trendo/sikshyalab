@@ -48,6 +48,7 @@ THIRD_PARTY_APPS = [
     "auditlog",
     "django_extensions",
     "whitenoise.runserver_nostatic",
+    "storages",
 ]
 
 LOCAL_APPS = [
@@ -158,10 +159,65 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"] if (BASE_DIR / "static").exists() else []
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+# ---------------------------------------------------------------------------
+# Media storage — local disk (default) or S3-compatible DataHub bucket
+# PostgreSQL stores only FileField keys (paths); binaries live in the bucket.
+# ---------------------------------------------------------------------------
+USE_S3 = config("USE_S3", default=False, cast=bool)
+
+AWS_ACCESS_KEY_ID = config("AWS_ACCESS_KEY_ID", default="")
+AWS_SECRET_ACCESS_KEY = config("AWS_SECRET_ACCESS_KEY", default="")
+AWS_STORAGE_BUCKET_NAME = config("AWS_STORAGE_BUCKET_NAME", default="")
+AWS_S3_ENDPOINT_URL = config("AWS_S3_ENDPOINT_URL", default="")
+AWS_S3_REGION_NAME = config("AWS_S3_REGION_NAME", default="")
+AWS_S3_ADDRESSING_STYLE = config("AWS_S3_ADDRESSING_STYLE", default="path")
+AWS_S3_SIGNATURE_VERSION = config("AWS_S3_SIGNATURE_VERSION", default="s3v4")
+# Empty ACL is required for buckets with "Bucket owner enforced" / ACLs disabled.
+_aws_acl = config("AWS_DEFAULT_ACL", default="")
+AWS_DEFAULT_ACL = _aws_acl if _aws_acl else None
+AWS_LOCATION = config("AWS_LOCATION", default="")
+AWS_QUERYSTRING_AUTH = config("AWS_QUERYSTRING_AUTH", default=True, cast=bool)
+AWS_QUERYSTRING_EXPIRE = config("AWS_QUERYSTRING_EXPIRE", default=3600, cast=int)
+AWS_S3_FILE_OVERWRITE = config("AWS_S3_FILE_OVERWRITE", default=False, cast=bool)
+AWS_S3_OBJECT_PARAMETERS = {
+    "CacheControl": config("AWS_S3_CACHE_CONTROL", default="max-age=86400"),
+}
+
+# Upload validation limits (validators in apps.common.file_validators)
+MEDIA_MAX_IMAGE_BYTES = config("MEDIA_MAX_IMAGE_BYTES", default=5 * 1024 * 1024, cast=int)
+MEDIA_MAX_DOCUMENT_BYTES = config("MEDIA_MAX_DOCUMENT_BYTES", default=20 * 1024 * 1024, cast=int)
+MEDIA_MAX_VIDEO_BYTES = config("MEDIA_MAX_VIDEO_BYTES", default=200 * 1024 * 1024, cast=int)
+MEDIA_MAX_AUDIO_BYTES = config("MEDIA_MAX_AUDIO_BYTES", default=30 * 1024 * 1024, cast=int)
+MEDIA_MAX_UPLOAD_BYTES = config("MEDIA_MAX_UPLOAD_BYTES", default=20 * 1024 * 1024, cast=int)
+
+if USE_S3:
+    STORAGES = {
+        "default": {
+            "BACKEND": "apps.common.storage.MediaStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+    # Keep MEDIA_URL as the API media gateway so auth gating still applies.
+    # AuthenticatedMediaView redirects to a signed S3 URL after checks.
+else:
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {
+                "location": str(MEDIA_ROOT),
+                "base_url": MEDIA_URL,
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -191,8 +247,8 @@ CORS_ALLOW_HEADERS = [
 # ---------------------------------------------------------------------------
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
-        "rest_framework.authentication.SessionAuthentication",
+        "apps.common.authentication.ShikshaLabJWTAuthentication",
+        "apps.common.authentication.ShikshaLabSessionAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",

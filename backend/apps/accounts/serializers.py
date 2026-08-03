@@ -1,6 +1,5 @@
-from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 
 from apps.accounts.models import ActivityLog, UserProfile, UserSettings
@@ -379,31 +378,26 @@ class LoginSerializer(serializers.Serializer):
     def validate(self, attrs):
         email = attrs.get("email", "").lower().strip()
         password = attrs.get("password")
-        request = self.context.get("request")
 
-        user = authenticate(request=request, username=email, password=password)
-        if user is None:
+        user = User.objects.filter(email__iexact=email).first()
+        if user is None or not user.check_password(password):
             raise serializers.ValidationError("Invalid email or password.")
 
+        from apps.common.authentication import AccountDeactivated
+        from apps.students.models import Student
+        from apps.students.services import ACCOUNT_DEACTIVATED_MESSAGE, get_student_profile
+
+        student = get_student_profile(user)
+        if student is not None and student.status == Student.Status.INACTIVE:
+            # Heal legacy rows that were deactivated without clearing login flags.
+            if user.is_active or user.is_active_account:
+                user.is_active = False
+                user.is_active_account = False
+                user.save(update_fields=["is_active", "is_active_account", "updated_at"])
+            raise AccountDeactivated(ACCOUNT_DEACTIVATED_MESSAGE)
+
         if not user.is_active or not user.is_active_account:
-            raise serializers.ValidationError("This account is inactive.")
-
-        student_profile = None
-        try:
-            student_profile = user.student_profile
-        except ObjectDoesNotExist:
-            student_profile = None
-
-        if student_profile is not None:
-            from apps.students.models import Student
-
-            if student_profile.status in Student.LOGIN_BLOCKED_STATUSES:
-                # Heal legacy rows deactivated before login sync existed.
-                if user.is_active or user.is_active_account:
-                    user.is_active = False
-                    user.is_active_account = False
-                    user.save(update_fields=["is_active", "is_active_account", "updated_at"])
-                raise serializers.ValidationError("This account is inactive.")
+            raise AccountDeactivated(ACCOUNT_DEACTIVATED_MESSAGE)
 
         attrs["user"] = user
         attrs["email"] = email

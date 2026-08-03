@@ -30,11 +30,26 @@ logger = logging.getLogger(__name__)
 
 def _extract_message(exc, response_data):
     """Derive a human-readable top-level message from the exception / data."""
+    # Prefer explicit detail for custom APIExceptions (e.g. AccountDeactivated).
+    if isinstance(exc, APIException) and hasattr(exc, "detail"):
+        detail = exc.detail
+        if isinstance(detail, str) and detail.strip():
+            # Keep generic ValidationError label below for field errors.
+            if not isinstance(exc, ValidationError):
+                return detail
+        if isinstance(detail, list) and detail and not isinstance(exc, ValidationError):
+            return str(detail[0])
+
     if isinstance(exc, ValidationError):
         return "Validation failed"
     if isinstance(exc, (NotAuthenticated, AuthenticationFailed)):
         return "Authentication required"
     if isinstance(exc, (PermissionDenied, DjangoPermissionDenied)):
+        detail = getattr(exc, "detail", None)
+        if isinstance(detail, str) and detail.strip():
+            return detail
+        if isinstance(detail, list) and detail:
+            return str(detail[0])
         return "Permission denied"
     if isinstance(exc, (NotFound, Http404)):
         return "Not found"
@@ -49,13 +64,6 @@ def _extract_message(exc, response_data):
         non_field = response_data.get("non_field_errors")
         if isinstance(non_field, list) and non_field:
             return str(non_field[0])
-
-    if isinstance(exc, APIException) and hasattr(exc, "detail"):
-        detail = exc.detail
-        if isinstance(detail, str):
-            return detail
-        if isinstance(detail, list) and detail:
-            return str(detail[0])
 
     return "An error occurred"
 

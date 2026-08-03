@@ -10,6 +10,7 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.common.responses import success_response
 from apps.common.permissions import ROLE_ADMIN, ROLE_STAFF, ROLE_STUDENT, ROLE_TEACHER, user_has_role
 from apps.students.filters import (
     AcademicHistoryFilter,
@@ -37,6 +38,7 @@ from apps.students.serializers import (
     StudentListSerializer,
     StudentSerializer,
 )
+from apps.students.services import deactivate_student, reactivate_student
 
 
 class StudentViewSet(viewsets.ModelViewSet):
@@ -121,12 +123,48 @@ class StudentViewSet(viewsets.ModelViewSet):
             description="Student profile soft-deleted.",
             performed_by=request.user,
         )
-        user = instance.user
-        if user.is_active or user.is_active_account:
-            user.is_active = False
-            user.is_active_account = False
-            user.save(update_fields=["is_active", "is_active_account", "updated_at"])
+        deactivate_student(instance, performed_by=request.user)
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=["post"], url_path="deactivate")
+    def deactivate(self, request, pk=None):
+        """Admin-only: set status INACTIVE, revoke tokens, notify student."""
+        if not user_has_role(request.user, ROLE_ADMIN, ROLE_STAFF):
+            return Response(
+                {"detail": "Only admins can deactivate students."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        student = self.get_object()
+        if student.status == Student.Status.INACTIVE:
+            return success_response(
+                data=StudentSerializer(student, context={"request": request}).data,
+                message="Student is already deactivated.",
+            )
+        student = deactivate_student(student, performed_by=request.user)
+        return success_response(
+            data=StudentSerializer(student, context={"request": request}).data,
+            message="Student account deactivated successfully.",
+        )
+
+    @action(detail=True, methods=["post"], url_path="reactivate")
+    def reactivate(self, request, pk=None):
+        """Admin-only: set status ACTIVE and notify student."""
+        if not user_has_role(request.user, ROLE_ADMIN, ROLE_STAFF):
+            return Response(
+                {"detail": "Only admins can reactivate students."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        student = self.get_object()
+        if student.status == Student.Status.ACTIVE:
+            return success_response(
+                data=StudentSerializer(student, context={"request": request}).data,
+                message="Student is already active.",
+            )
+        student = reactivate_student(student, performed_by=request.user)
+        return success_response(
+            data=StudentSerializer(student, context={"request": request}).data,
+            message="Student account reactivated successfully.",
+        )
 
     @action(detail=False, methods=["get", "patch"], url_path="me")
     def me(self, request):

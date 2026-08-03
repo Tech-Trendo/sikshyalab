@@ -283,6 +283,17 @@ class CourseViewSet(viewsets.ModelViewSet):
         file = request.FILES.get("thumbnail")
         if not file:
             return Response({"detail": "No thumbnail file provided."}, status=status.HTTP_400_BAD_REQUEST)
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from apps.common.file_validators import validate_uploaded_file
+
+        try:
+            validate_uploaded_file(file, kind="image")
+        except DjangoValidationError as exc:
+            return Response(
+                {"detail": "; ".join(exc.messages)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         course.thumbnail = file
         course.save(update_fields=["thumbnail", "updated_at"])
         return Response(CourseSerializer(course, context={"request": request}).data)

@@ -16,26 +16,6 @@ from apps.students.models import (
 User = get_user_model()
 
 
-def sync_student_login_access(student: Student, *, status: str | None = None) -> None:
-    """Enable/disable the linked User based on student status."""
-    next_status = status if status is not None else student.status
-    user = getattr(student, "user", None)
-    if user is None:
-        return
-
-    allow_login = next_status not in Student.LOGIN_BLOCKED_STATUSES
-    updates: list[str] = []
-    if user.is_active != allow_login:
-        user.is_active = allow_login
-        updates.append("is_active")
-    if user.is_active_account != allow_login:
-        user.is_active_account = allow_login
-        updates.append("is_active_account")
-    if updates:
-        updates.append("updated_at")
-        user.save(update_fields=list(dict.fromkeys(updates)))
-
-
 class StudentUserBriefSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source="get_full_name", read_only=True)
     provisional_password = serializers.SerializerMethodField()
@@ -164,6 +144,8 @@ class StudentListSerializer(serializers.ModelSerializer):
             "student_id",
             "enrollment_number",
             "status",
+            "deactivated_at",
+            "deactivated_by",
             "admission_date",
             "profile_completed",
             "city",
@@ -207,6 +189,8 @@ class StudentSerializer(serializers.ModelSerializer):
             "student_id",
             "enrollment_number",
             "status",
+            "deactivated_at",
+            "deactivated_by",
             "blood_group",
             "nationality",
             "religion",
@@ -233,6 +217,8 @@ class StudentSerializer(serializers.ModelSerializer):
             "id",
             "user",
             "full_name",
+            "deactivated_at",
+            "deactivated_by",
             "guardians",
             "academic_history",
             "documents",
@@ -261,17 +247,17 @@ class StudentSerializer(serializers.ModelSerializer):
         user = validated_data.get("user")
         if user is None:
             raise serializers.ValidationError({"user_id": "This field is required."})
-        student = super().create(validated_data)
-        sync_student_login_access(student)
-        return student
+        return super().create(validated_data)
 
     def update(self, instance, validated_data):
+        from apps.students.services import deactivate_student, reactivate_student
+
         name = (validated_data.pop("name", None) or "").strip()
         first_name = validated_data.pop("first_name", None)
         last_name = validated_data.pop("last_name", None)
         phone = validated_data.pop("phone", serializers.empty)
         email = validated_data.pop("email", None)
-        status_changed = "status" in validated_data and validated_data["status"] != instance.status
+        next_status = validated_data.pop("status", serializers.empty)
 
         user = instance.user
         user_updates: list[str] = []
@@ -304,6 +290,13 @@ class StudentSerializer(serializers.ModelSerializer):
             user.save(update_fields=list(dict.fromkeys(user_updates)))
 
         student = super().update(instance, validated_data)
-        if status_changed:
-            sync_student_login_access(student)
+
+        if next_status is not serializers.empty and next_status != student.status:
+            request = self.context.get("request")
+            actor = getattr(request, "user", None) if request else None
+            if next_status == Student.Status.INACTIVE:
+                student = deactivate_student(student, performed_by=actor)
+            elif next_status == Student.Status.ACTIVE:
+                student = reactivate_student(student, performed_by=actor)
+
         return student

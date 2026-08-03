@@ -337,6 +337,34 @@ def send_password_changed_email(*, email: str, name: str = "") -> bool:
     return ok
 
 
+def send_student_deactivated_email(*, email: str, name: str = "") -> bool:
+    display = name.strip() or email
+    subject = "Your ShikshaLab account has been deactivated"
+    body = (
+        f"Hello {display},\n\n"
+        f"Your ShikshaLab student account has been deactivated by an administrator.\n\n"
+        f"You will no longer be able to sign in or access the student portal.\n"
+        f"If you believe this was a mistake, please contact your institute administrator.\n\n"
+        f"— ShikshaLab"
+    )
+    ok, _err = send_email_message(to_email=email, subject=subject, text=body)
+    return ok
+
+
+def send_student_reactivated_email(*, email: str, name: str = "") -> bool:
+    display = name.strip() or email
+    login_url = f"{_frontend_url()}/login"
+    subject = "Your ShikshaLab account has been reactivated"
+    body = (
+        f"Hello {display},\n\n"
+        f"Your ShikshaLab student account has been reactivated.\n\n"
+        f"You can sign in again at: {login_url}\n\n"
+        f"— ShikshaLab"
+    )
+    ok, _err = send_email_message(to_email=email, subject=subject, text=body)
+    return ok
+
+
 def send_event_registration_approved_email(
     *,
     email: str,

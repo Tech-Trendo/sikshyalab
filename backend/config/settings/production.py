@@ -87,16 +87,10 @@ EMAIL_BACKEND = config(
 )
 
 # ---------------------------------------------------------------------------
-# Media — development serves via AuthenticatedMediaView in urls.py.
-# WhiteNoise only covers STATIC files, not MEDIA. For production, set one of:
-#   - nginx/CDN alias for MEDIA_ROOT
-#   - django-storages (S3/GCS) via DEFAULT_FILE_STORAGE / STORAGES["default"]
-# Do not rely on WhiteNoise for user uploads.
+# Media — served via AuthenticatedMediaView (local disk or S3 signed redirect).
+# Set USE_S3=true + AWS_* in .env for DataHub / S3-compatible object storage.
+# WhiteNoise only covers STATIC files, not MEDIA.
 # ---------------------------------------------------------------------------
-DEFAULT_FILE_STORAGE = config(
-    "DEFAULT_FILE_STORAGE",
-    default="django.core.files.storage.FileSystemStorage",
-)
 
 
 # ---------------------------------------------------------------------------
