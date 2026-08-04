@@ -111,6 +111,7 @@ type DashboardData = {
   addStudent: (s: Omit<Student, "id" | "avatar" | "progress" | "progressNote" | "fees" | "joined"> & Partial<Pick<Student, "progress" | "progressNote" | "fees">>) => Promise<{ temporaryPassword?: string; emailSent?: boolean; emailError?: string } | void>;
   updateStudent: (id: string, patch: Partial<Student>) => void;
   deactivateStudent: (id: string) => void;
+  reactivateStudent: (id: string) => void;
   deleteStudent: (id: string) => void;
   importStudents: (rows: string[][]) => number;
 
@@ -371,8 +372,21 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   }, [refreshData, courses]);
 
   const deactivateStudent = useCallback((id: string) => {
-    setStudents((prev) => prev.map((s) => (s.id === id ? { ...s, status: "Deactivated" as const } : s)));
-    syncAfter({ type: "deactivateStudent", id }, refreshData);
+    setStudents((prev) => {
+      const target = prev.find((s) => s.id === id);
+      const key = (target as { _uuid?: string } | undefined)?._uuid || id;
+      syncAfter({ type: "deactivateStudent", id: key }, refreshData);
+      return prev.map((s) => (s.id === id ? { ...s, status: "Deactivated" as const } : s));
+    });
+  }, [refreshData]);
+
+  const reactivateStudent = useCallback((id: string) => {
+    setStudents((prev) => {
+      const target = prev.find((s) => s.id === id);
+      const key = (target as { _uuid?: string } | undefined)?._uuid || id;
+      syncAfter({ type: "reactivateStudent", id: key }, refreshData);
+      return prev.map((s) => (s.id === id ? { ...s, status: "Active" as const } : s));
+    });
   }, [refreshData]);
 
   const deleteStudent = useCallback((id: string) => {
@@ -1096,6 +1110,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       addStudent,
       updateStudent,
       deactivateStudent,
+      reactivateStudent,
       deleteStudent,
       importStudents,
       addTeacher,
@@ -1145,7 +1160,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       students, teachers, courses, courseCategories, batches, shifts, assignments, certificates, tasks, taskBoard, submissions,
       blog, events, testimonials, faqs, seoPages, homepage, partResources,
       dataSource, loading, refreshData,
-      addStudent, updateStudent, deactivateStudent, deleteStudent, importStudents,
+      addStudent, updateStudent, deactivateStudent, reactivateStudent, deleteStudent, importStudents,
       addTeacher, updateTeacher, assignCourseToTeacher, assignCoursesToTeacher, assignBatchesToTeacher, importTeachers,
       addCourse, updateCourse, publishCourse, importCourses,
       addBatch, updateBatch, importBatches,

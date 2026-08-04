@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { SiteLayout } from "@/components/layout/SiteLayout";
 import { AuthShell, authButtonClass, authInputClass } from "@/components/layout/AuthShell";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth, type AuthUser } from "@/components/dashboard/AuthContext";
 import { dashboardPathForRole, rememberEmailRole } from "@/lib/auth-routes";
 import { getAccessToken, createLoginHandoff } from "@/lib/api";
+import { DEACTIVATED_ACCOUNT_MESSAGE } from "@/lib/account-deactivated";
 import { getDashboardUrl } from "@/lib/env";
 import { cn } from "@/lib/utils";
 
@@ -48,10 +50,21 @@ async function goToDashboard(user: AuthUser) {
 
 function Login() {
   const { signIn: signInUser } = useAuth();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get("deactivated") === "1") {
+      toast.error(DEACTIVATED_ACCOUNT_MESSAGE);
+      // Drop the query flag so refresh doesn't re-toast
+      const url = new URL(window.location.href);
+      url.searchParams.delete("deactivated");
+      window.history.replaceState({}, "", url.pathname + url.search);
+    }
+  }, [searchParams]);
 
   const onSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,8 +92,12 @@ function Login() {
           setBusy(false);
         });
       }, 150);
-    } catch {
-      toast.error("Invalid email or password");
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message.trim()
+          ? err.message
+          : "Invalid email or password";
+      toast.error(message);
       setBusy(false);
     }
   };

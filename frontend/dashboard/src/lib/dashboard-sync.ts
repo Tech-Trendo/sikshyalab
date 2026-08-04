@@ -31,7 +31,9 @@ export type EntityMaps = {
 export function buildEntityMaps(bundle: DashboardBundle): EntityMaps {
   const studentByCode = new Map<string, string>();
   for (const s of bundle.students) {
-    if (s.student_id) studentByCode.set(s.student_id, String(s.id));
+    const uuid = String(s.id);
+    studentByCode.set(uuid, uuid);
+    if (s.student_id) studentByCode.set(s.student_id, uuid);
   }
 
   const teacherByName = new Map<string, string>();
@@ -133,13 +135,11 @@ export function setEntityMaps(maps: EntityMaps) {
 function studentStatusToApi(status?: string): string | undefined {
   switch (status) {
     case "Active":
+    case "Completed":
       return "ACTIVE";
     case "On Hold":
-      return "SUSPENDED";
-    case "Completed":
-      return "GRADUATED";
     case "Deactivated":
-      return "DROPPED";
+      return "INACTIVE";
     default:
       return undefined;
   }
@@ -190,6 +190,7 @@ function taskStatusToApi(status?: string): string | undefined {
 export type SyncAction =
   | { type: "updateStudent"; id: string; patch: Record<string, unknown> }
   | { type: "deactivateStudent"; id: string }
+  | { type: "reactivateStudent"; id: string }
   | { type: "deleteStudent"; id: string }
   | { type: "updateCourse"; slug: string; patch: Record<string, unknown> }
   | { type: "createCourse"; payload: Record<string, unknown> }
@@ -323,7 +324,14 @@ export async function runDashboardSync(action: SyncAction): Promise<boolean | st
     case "deactivateStudent": {
       const uuid = M.studentByCode.get(action.id);
       if (!uuid) return false;
-      return !!(await apiMutate(`/students/profiles/${uuid}/`, "PATCH", { status: "DROPPED" }));
+      const result = await apiMutateDetailed(`/students/profiles/${uuid}/deactivate/`, "POST", {});
+      return result.status >= 200 && result.status < 300;
+    }
+    case "reactivateStudent": {
+      const uuid = M.studentByCode.get(action.id);
+      if (!uuid) return false;
+      const result = await apiMutateDetailed(`/students/profiles/${uuid}/reactivate/`, "POST", {});
+      return result.status >= 200 && result.status < 300;
     }
     case "deleteStudent": {
       const uuid = M.studentByCode.get(action.id);
@@ -652,10 +660,10 @@ export async function runDashboardSync(action: SyncAction): Promise<boolean | st
   }
 }
 
-/** Fire-and-forget sync; caller keeps existing local state logic. */
+/** Fire-and-forget sync; always re-fetch after mutate so UI matches server. */
 export function syncAfter(action: SyncAction, refresh?: () => Promise<void>) {
   if (!getAccessToken()) return;
-  void runDashboardSync(action).then((ok) => {
-    if (ok && refresh) void refresh();
+  void runDashboardSync(action).finally(() => {
+    if (refresh) void refresh();
   });
 }

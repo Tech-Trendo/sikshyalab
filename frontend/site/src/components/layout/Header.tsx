@@ -246,37 +246,41 @@ export function Header() {
                       <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", coursesOpen && "rotate-180")} />
                     </button>
                     {coursesOpen && (
-                      <div className="absolute left-1/2 top-full z-50 w-[min(92vw,28rem)] -translate-x-1/2 pt-2 lg:left-0 lg:translate-x-0">
-                        <div className="max-h-[70vh] overflow-y-auto rounded-xl border border-brand-border bg-white p-2 shadow-xl">
+                      <div className="absolute left-1/2 top-full z-50 w-[min(94vw,52rem)] -translate-x-1/2 pt-2">
+                        <div className="overflow-hidden rounded-xl border border-brand-border bg-white shadow-xl">
                           {coursesByCategory.length === 0 ? (
-                            <p className="px-3 py-2.5 text-sm text-brand-body">No courses yet.</p>
+                            <p className="px-4 py-3 text-sm text-brand-body">No courses yet.</p>
                           ) : (
-                            coursesByCategory.map((group) => (
-                              <div key={group.category} className="mb-1">
-                                <Link
-                                  href={`/courses?category=${encodeURIComponent(group.category)}`}
-                                  className="block rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wide text-brand-orange hover:bg-brand-lighten-01"
-                                >
-                                  {group.category}
-                                </Link>
-                                {group.courses.slice(0, 6).map((c) => (
+                            <div className="grid grid-cols-2 gap-x-2 gap-y-4 p-3 md:grid-cols-3 lg:grid-cols-[repeat(auto-fit,minmax(11rem,1fr))]">
+                              {coursesByCategory.map((group) => (
+                                <div key={group.category} className="min-w-0">
                                   <Link
-                                    key={`${group.category}-${c.slug}`}
-                                    href={`/courses/${c.slug}`}
-                                    className={cn(
-                                      "block min-h-10 rounded-lg px-3 py-2 pl-4 text-sm font-semibold text-brand-navy hover:bg-brand-lighten-02 hover:text-brand-orange",
-                                      isActive(`/courses/${c.slug}`) && "text-brand-orange",
-                                    )}
+                                    href={`/courses?category=${encodeURIComponent(group.category)}`}
+                                    className="block rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wide text-brand-orange hover:bg-brand-lighten-01"
                                   >
-                                    {c.title}
+                                    {group.category}
                                   </Link>
-                                ))}
-                              </div>
-                            ))
+                                  <div className="mt-0.5 flex flex-col">
+                                    {group.courses.slice(0, 6).map((c) => (
+                                      <Link
+                                        key={`${group.category}-${c.slug}`}
+                                        href={`/courses/${c.slug}`}
+                                        className={cn(
+                                          "block min-h-9 rounded-lg px-3 py-1.5 text-sm font-semibold text-brand-navy hover:bg-brand-lighten-02 hover:text-brand-orange",
+                                          isActive(`/courses/${c.slug}`) && "text-brand-orange",
+                                        )}
+                                      >
+                                        {c.title}
+                                      </Link>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           )}
                           <Link
                             href="/courses"
-                            className="mt-1 block rounded-lg bg-brand-lighten-01 px-3 py-2.5 text-sm font-semibold text-brand-navy transition-colors hover:text-brand-orange"
+                            className="block border-t border-brand-border bg-brand-lighten-01 px-4 py-2.5 text-sm font-semibold text-brand-navy transition-colors hover:text-brand-orange"
                           >
                             Browse all courses →
                           </Link>
@@ -314,20 +318,22 @@ export function Header() {
                       <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", pagesOpen && "rotate-180")} />
                     </button>
                     {pagesOpen && (
-                      <div className="absolute left-0 top-full z-50 w-52 pt-2">
-                        <div className="rounded-xl border border-brand-border bg-white p-2 shadow-xl">
-                          {PAGE_LINKS.map((p) => (
-                            <Link
-                              key={p.href}
-                              href={p.href}
+                      <div className="absolute left-1/2 top-full z-50 w-[min(92vw,36rem)] -translate-x-1/2 pt-2">
+                        <div className="overflow-hidden rounded-xl border border-brand-border bg-white p-3 shadow-xl">
+                          <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
+                            {PAGE_LINKS.map((p) => (
+                              <Link
+                                key={p.href}
+                                href={p.href}
                                 className={cn(
                                   "block min-h-11 rounded-lg px-3 py-2.5 text-sm font-semibold text-brand-navy hover:bg-brand-lighten-02 hover:text-brand-orange",
                                   isActive(p.href) && "text-brand-orange",
                                 )}
-                            >
-                              {p.label}
-                            </Link>
-                          ))}
+                              >
+                                {p.label}
+                              </Link>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     )}

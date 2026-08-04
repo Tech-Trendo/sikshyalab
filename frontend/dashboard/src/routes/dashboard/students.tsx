@@ -31,7 +31,7 @@ const csvHeaders = ["id", "name", "email", "phone", "course", "batch", "shift", 
 const emptyForm = { name: "", email: "", phone: "", course: "", batch: "", shift: "Evening", status: "Active" as Student["status"] };
 
 function StudentsPage() {
-  const { courses, batches, addStudent, updateStudent, deactivateStudent, deleteStudent, importStudents } = useDashboardData();
+  const { courses, batches, addStudent, updateStudent, deactivateStudent, reactivateStudent, deleteStudent, importStudents } = useDashboardData();
   const { isTeacher, myStudents } = useTeacherScope();
   const students = myStudents;
   const [q, setQ] = useState("");
@@ -183,9 +183,9 @@ function StudentsPage() {
             <SelectContent>
               <SelectItem value="all">All statuses</SelectItem>
               <SelectItem value="Active">Active</SelectItem>
+              <SelectItem value="Deactivated">Deactivated</SelectItem>
               <SelectItem value="On Hold">On Hold</SelectItem>
               <SelectItem value="Completed">Completed</SelectItem>
-              <SelectItem value="Deactivated">Deactivated</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -209,7 +209,34 @@ function StudentsPage() {
                       {!isTeacher && (
                         <>
                           <DropdownMenuItem onClick={() => openEdit(s)}>Edit</DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive" onClick={() => { deactivateStudent(s.id); toast.success(`${s.name} deactivated`); }}>Deactivate</DropdownMenuItem>
+                          {s.status === "Deactivated" ? (
+                            <DropdownMenuItem
+                              onClick={() => {
+                                if (!window.confirm(`Reactivate ${s.name}? They will be able to sign in again.`)) return;
+                                reactivateStudent(s.id);
+                                toast.success(`${s.name} reactivated`);
+                              }}
+                            >
+                              Reactivate
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => {
+                                if (
+                                  !window.confirm(
+                                    `Deactivate ${s.name}? They will be logged out and cannot sign in.`,
+                                  )
+                                ) {
+                                  return;
+                                }
+                                deactivateStudent(s.id);
+                                toast.success(`${s.name} deactivated`);
+                              }}
+                            >
+                              Deactivate
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem
                             className="text-destructive"
                             onClick={() => {
@@ -283,7 +310,34 @@ function StudentsPage() {
                       {!isTeacher && (
                         <>
                           <DropdownMenuItem onClick={() => openEdit(s)}>Edit</DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive" onClick={() => { deactivateStudent(s.id); toast.success(`${s.name} deactivated`); }}>Deactivate</DropdownMenuItem>
+                          {s.status === "Deactivated" ? (
+                            <DropdownMenuItem
+                              onClick={() => {
+                                if (!window.confirm(`Reactivate ${s.name}? They will be able to sign in again.`)) return;
+                                reactivateStudent(s.id);
+                                toast.success(`${s.name} reactivated`);
+                              }}
+                            >
+                              Reactivate
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => {
+                                if (
+                                  !window.confirm(
+                                    `Deactivate ${s.name}? They will be logged out and cannot sign in.`,
+                                  )
+                                ) {
+                                  return;
+                                }
+                                deactivateStudent(s.id);
+                                toast.success(`${s.name} deactivated`);
+                              }}
+                            >
+                              Deactivate
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem
                             className="text-destructive"
                             onClick={() => {
@@ -384,9 +438,9 @@ function StudentsPage() {
                   <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Active">Active</SelectItem>
+                    <SelectItem value="Deactivated">Deactivated</SelectItem>
                     <SelectItem value="On Hold">On Hold</SelectItem>
                     <SelectItem value="Completed">Completed</SelectItem>
-                    <SelectItem value="Deactivated">Deactivated</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -418,6 +472,12 @@ function StudentsPage() {
                 <p><span className="text-muted-foreground">Batch:</span> {viewing.batch} ({viewing.shift})</p>
                 <p><span className="text-muted-foreground">Progress:</span> {viewing.progress}%</p>
                 <p><span className="text-muted-foreground">Status:</span> {viewing.status}</p>
+                {viewing.status === "Deactivated" && viewing.deactivatedAt && (
+                  <p className="sm:col-span-2">
+                    <span className="text-muted-foreground">Deactivated at:</span>{" "}
+                    {new Date(viewing.deactivatedAt).toLocaleString()}
+                  </p>
+                )}
                 {viewing.progressNote && (
                   <p className="sm:col-span-2"><span className="text-muted-foreground">Progress note:</span> {viewing.progressNote}</p>
                 )}

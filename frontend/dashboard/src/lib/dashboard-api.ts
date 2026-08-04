@@ -7,6 +7,7 @@ import { getAccessToken } from "./api";
 import { resolveApiBase } from "./api-base";
 import { batchEndpoints, courseEndpoints } from "./api-endpoints";
 import { cmsApi } from "./cms-api";
+import { handleDeactivatedHttpResponse } from "./account-deactivated";
 
 const API_BASE = resolveApiBase();
 
@@ -60,7 +61,11 @@ export async function apiList<T>(path: string): Promise<T[]> {
       const t = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       const res = await fetch(url, { headers: headers(), signal: controller.signal });
       clearTimeout(t);
-      if (!res.ok) return all.length ? all : [];
+      if (!res.ok) {
+        const raw = await res.json().catch(() => null);
+        if (handleDeactivatedHttpResponse(res.status, raw)) return all.length ? all : [];
+        return all.length ? all : [];
+      }
       const raw = await res.json().catch(() => null);
       let rows: T[] = [];
       let totalPages = 1;
@@ -97,7 +102,11 @@ async function apiGet<T>(path: string): Promise<T | null> {
     const t = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     const res = await fetch(`${API_BASE}${path}`, { headers: headers(), signal: controller.signal });
     clearTimeout(t);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const raw = await res.json().catch(() => null);
+      if (handleDeactivatedHttpResponse(res.status, raw)) return null;
+      return null;
+    }
     return parseBody<T>(res);
   } catch {
     return null;
@@ -138,6 +147,9 @@ export async function apiMutateDetailed<T>(
       raw = null;
     }
     if (!res.ok) {
+      if (handleDeactivatedHttpResponse(res.status, raw)) {
+        return { data: null, error: "Account deactivated", status: res.status };
+      }
       return { data: null, error: errorMessageFromBody(raw, res.status), status: res.status };
     }
     // Re-wrap parsed body (already consumed as raw)
@@ -185,6 +197,8 @@ export type ApiStudentProfile = {
   student_id: string;
   full_name?: string;
   status?: string;
+  deactivated_at?: string | null;
+  deactivated_by?: string | number | null;
   user?: {
     email?: string;
     phone?: string;

@@ -121,6 +121,8 @@ export const students: {
   mustChangePassword?: boolean;
   _uuid?: string;
   _studentFeeId?: string;
+  deactivatedAt?: string;
+  deactivatedBy?: string;
 }[] = [];
 export const batches: {
   id: string;

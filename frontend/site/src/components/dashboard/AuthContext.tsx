@@ -151,21 +151,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isStudent: user.role === "student",
       signIn: async (email, password) => {
         const api = await apiLogin(email, password);
-        if (api?.user) {
-          const profileIds = await fetchRoleProfileIds(normalizeApiRole(api.user.role));
-          const mapped: AuthUser = {
-            ...mapApiUserToAuth(api.user, profileIds),
-            backend: true,
-            mustChangePassword: Boolean(
-              api.must_change_password ?? api.user.must_change_password,
-            ),
-          };
-          rememberEmailRole(mapped.email, mapped.role);
-          persist(mapped);
-          emitAuthChanged();
-          return mapped;
-        }
-        throw new ApiError("Invalid email or password", 401);
+        const profileIds = await fetchRoleProfileIds(normalizeApiRole(api.user.role));
+        const mapped: AuthUser = {
+          ...mapApiUserToAuth(api.user, profileIds),
+          backend: true,
+          mustChangePassword: Boolean(
+            api.must_change_password ?? api.user.must_change_password,
+          ),
+        };
+        rememberEmailRole(mapped.email, mapped.role);
+        persist(mapped);
+        emitAuthChanged();
+        return mapped;
       },
       signUp: async () => {
         throw new ApiError(

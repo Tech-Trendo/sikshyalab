@@ -237,14 +237,13 @@ function mapStudentStatus(s?: string): MappedStudent["status"] {
   switch ((s || "").toUpperCase()) {
     case "ACTIVE":
       return "Active";
+    case "INACTIVE":
+    case "DROPPED":
+    case "SUSPENDED":
+      return "Deactivated";
     case "GRADUATED":
     case "COMPLETED":
       return "Completed";
-    case "SUSPENDED":
-    case "INACTIVE":
-      return "On Hold";
-    case "DROPPED":
-      return "Deactivated";
     default:
       return "Active";
   }
@@ -483,7 +482,7 @@ export function mapDashboardBundle(bundle: DashboardBundle): MappedDashboardData
       course: courseTitle || "—",
       batch: batchCode || "—",
       shift: mapShiftName(shiftName),
-      status: mapStudentStatus(s.status || enrollment?.status),
+      status: mapStudentStatus(s.status),
       progress: progress?.progress_percent ?? 0,
       fees: { total, paid, due },
       joined: formatDate(s.admission_date),

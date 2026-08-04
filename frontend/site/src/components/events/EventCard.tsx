@@ -12,7 +12,6 @@ export type EventCardProps = {
   date: string;
   time: string;
   location: string;
-  tag?: string;
   cover: string;
   onRegister?: () => void;
   className?: string;
@@ -28,7 +27,6 @@ export function EventCard({
   date,
   time,
   location,
-  tag = "Event",
   cover,
   onRegister,
   className,
@@ -53,9 +51,6 @@ export function EventCard({
           sizes="(max-width: 768px) 100vw, 50vw"
           className="object-cover transition-transform duration-[400ms] ease-[cubic-bezier(0.215,0.61,0.355,1)] group-hover:scale-105"
         />
-        <span className="absolute left-3 top-3 inline-flex rounded-[5px] bg-brand-navy px-2.5 py-1 text-xs font-semibold text-white">
-          {tag}
-        </span>
         <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-[5px] bg-brand-orange px-2.5 py-1 text-xs font-semibold text-white">
           <Calendar className="h-3.5 w-3.5" aria-hidden />
           {date}

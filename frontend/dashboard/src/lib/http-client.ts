@@ -4,6 +4,7 @@
  */
 
 import { resolveApiBase } from "./api-base";
+import { handleDeactivatedHttpResponse } from "./account-deactivated";
 
 export type ApiEnvelope<T> = {
   success?: boolean;
@@ -92,6 +93,13 @@ export async function httpRequest<T>(
 
   if (!res.ok) {
     const envelope = body as ApiEnvelope<unknown> | null;
+    if (handleDeactivatedHttpResponse(res.status, body)) {
+      throw new ApiError(
+        envelope?.message || "Your account has been deactivated. Please contact the administrator.",
+        res.status,
+        envelope?.errors,
+      );
+    }
     const message =
       envelope?.message ||
       (typeof envelope?.errors === "string" ? envelope.errors : undefined) ||

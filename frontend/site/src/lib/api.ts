@@ -5,6 +5,32 @@
 
 import { normalizeApiRole } from "@/lib/auth-routes";
 import { apiBase } from "@/lib/env";
+import { ApiError } from "@/lib/http-client";
+import {
+  DEACTIVATED_ACCOUNT_MESSAGE,
+  handleDeactivatedHttpResponse,
+  resolveLoginFailureMessage,
+} from "@/lib/account-deactivated";
+
+async function assertStudentAccountActive(): Promise<void> {
+  const res = await apiFetch("/students/profiles/me/");
+  if (!res || !res.ok) {
+    if (res) {
+      const body = await parseJson(res);
+      if (handleDeactivatedHttpResponse(res.status, body)) {
+        throw new ApiError(DEACTIVATED_ACCOUNT_MESSAGE, 403);
+      }
+    }
+    return;
+  }
+  const body = await parseJson(res);
+  const data = (unwrapData<{ status?: string }>(body) || body) as { status?: string } | null;
+  const status = String(data?.status || "").toUpperCase();
+  if (status === "INACTIVE") {
+    clearTokens();
+    throw new ApiError(DEACTIVATED_ACCOUNT_MESSAGE, 403);
+  }
+}
 
 const ACCESS_KEY = "shikshalab_access_token";
 const REFRESH_KEY = "shikshalab_refresh_token";
@@ -152,6 +178,8 @@ export type ApiUser = {
   bio?: string;
   location?: string;
   must_change_password?: boolean;
+  is_active?: boolean;
+  is_active_account?: boolean;
   profile?: {
     title?: string;
     bio?: string;
@@ -230,6 +258,10 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response | nu
         headers: buildHeaders(token),
       });
     }
+    if (res.status === 403) {
+      const body = await res.clone().json().catch(() => null);
+      if (handleDeactivatedHttpResponse(403, body)) return res;
+    }
     return res;
   } catch {
     return null;
@@ -240,19 +272,28 @@ export async function apiLogin(email: string, password: string): Promise<{
   user: ApiUser;
   tokens: { access: string; refresh: string };
   must_change_password?: boolean;
-} | null> {
+}> {
   // Fresh login — don't send a stale Bearer token (confuses logs / edge cases)
   clearTokens();
-  const res = await fetch(`${apiBase()}/accounts/auth/login/`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
-  });
-  if (!res || !res.ok) return null;
+  let res: Response;
+  try {
+    res = await fetch(`${apiBase()}/accounts/auth/login/`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+    });
+  } catch {
+    throw new ApiError("Could not reach the server. Try again.", 0);
+  }
+
   const body = await parseJson(res);
+  if (!res.ok) {
+    throw new ApiError(resolveLoginFailureMessage(body, res.status), res.status, body?.errors);
+  }
+
   const data = (unwrapData<{
     user: ApiUser;
     tokens: { access: string; refresh: string };
@@ -262,8 +303,22 @@ export async function apiLogin(email: string, password: string): Promise<{
     tokens?: { access?: string; refresh?: string };
     must_change_password?: boolean;
   };
-  if (!data?.user || !data?.tokens?.access) return null;
+  if (!data?.user || !data?.tokens?.access) {
+    throw new ApiError("Invalid email or password", 401);
+  }
+
+  if (data.user.is_active === false || data.user.is_active_account === false) {
+    clearTokens();
+    throw new ApiError(DEACTIVATED_ACCOUNT_MESSAGE, 403);
+  }
+
   setTokens(data.tokens.access, data.tokens.refresh);
+
+  // Deactivated students (INACTIVE) — block on the client after auth.
+  if (normalizeApiRole(data.user.role) === "student") {
+    await assertStudentAccountActive();
+  }
+
   const must =
     Boolean(data.must_change_password) || Boolean(data.user.must_change_password);
   return {

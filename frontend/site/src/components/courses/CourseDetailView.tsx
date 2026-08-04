@@ -449,7 +449,6 @@ export function CourseDetailView({
                                   date={e.date}
                                   time={e.time}
                                   location={e.location}
-                                  tag={e.tag}
                                   cover={e.cover}
                                   onRegister={() =>
                                     setRegisterFor({ slug: e.slug, title: e.title })

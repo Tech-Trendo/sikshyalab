@@ -42,7 +42,6 @@ export function HomeEvents() {
                 date={e.date}
                 time={e.time}
                 location={e.location}
-                tag={e.tag}
                 cover={e.cover}
                 onRegister={() => setRegisterFor({ slug: e.slug, title: e.title })}
                 className="mx-0 max-w-none"

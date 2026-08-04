@@ -6,6 +6,7 @@
 import { normalizeApiRole } from "@/lib/auth-routes";
 import { courseEndpoints } from "@/lib/api-endpoints";
 import { resolveApiBase } from "@/lib/api-base";
+import { handleDeactivatedHttpResponse } from "@/lib/account-deactivated";
 
 const API_BASE = resolveApiBase();
 
@@ -204,10 +205,15 @@ export type ApiNotification = {
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response | null> {
   try {
-    return await fetch(`${API_BASE}${path}`, {
+    const res = await fetch(`${API_BASE}${path}`, {
       ...init,
       headers: { ...authHeaders(), ...(init?.headers || {}) },
     });
+    if (res.status === 403) {
+      const body = await res.clone().json().catch(() => null);
+      if (handleDeactivatedHttpResponse(403, body)) return res;
+    }
+    return res;
   } catch {
     return null;
   }
