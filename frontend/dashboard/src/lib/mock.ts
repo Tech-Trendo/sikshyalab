@@ -69,6 +69,7 @@ export const teachers: {
   bio: string;
   email?: string;
   phone?: string;
+  _uuid?: string;
 }[] = [];
 export const testimonials: {
   name: string;
@@ -121,8 +122,6 @@ export const students: {
   mustChangePassword?: boolean;
   _uuid?: string;
   _studentFeeId?: string;
-  deactivatedAt?: string;
-  deactivatedBy?: string;
 }[] = [];
 export const batches: {
   id: string;
