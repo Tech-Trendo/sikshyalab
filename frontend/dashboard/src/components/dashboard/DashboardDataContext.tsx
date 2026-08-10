@@ -10,9 +10,11 @@ import {
 } from "react";
 import { getAccessToken, apiAdminCreateUser } from "@/lib/api";
 import { onAuthChanged } from "@/lib/auth-events";
-import { fetchDashboardBundle, type DashboardBundle } from "@/lib/dashboard-api";
+import { fetchDashboardBundle, apiMutateDetailed, type DashboardBundle } from "@/lib/dashboard-api";
 import { mapDashboardBundle } from "@/lib/dashboard-mappers";
 import { buildEntityMaps, setEntityMaps, syncAfter, runDashboardSync } from "@/lib/dashboard-sync";
+import { teacherEndpoints, batchEndpoints } from "@/lib/api-endpoints";
+import { contentApi } from "@/lib/content-api";
 import { useAuth } from "@/components/dashboard/AuthContext";
 import {
   students as seedStudents,
@@ -66,6 +68,7 @@ export type PartResourceItem = {
   title: string;
   type: "video" | "notes" | "pdf" | "other";
   fileName: string;
+  fileUrl: string | null;
   uploadedAt: string;
 };
 export type StudentSubmission = {
@@ -111,19 +114,20 @@ type DashboardData = {
   addStudent: (s: Omit<Student, "id" | "avatar" | "progress" | "progressNote" | "fees" | "joined"> & Partial<Pick<Student, "progress" | "progressNote" | "fees">>) => Promise<{ temporaryPassword?: string; emailSent?: boolean; emailError?: string } | void>;
   updateStudent: (id: string, patch: Partial<Student>) => void;
   deactivateStudent: (id: string) => void;
-  reactivateStudent: (id: string) => void;
   deleteStudent: (id: string) => void;
   importStudents: (rows: string[][]) => number;
 
   addTeacher: (t: Omit<Teacher, "avatar" | "courses"> & { courses?: number; email?: string; phone?: string }) => Promise<{ temporaryPassword?: string; emailSent?: boolean; emailError?: string } | void>;
   updateTeacher: (name: string, patch: Partial<Teacher>) => void;
   assignCourseToTeacher: (teacherName: string, courseTitle: string) => void;
-  assignCoursesToTeacher: (teacherName: string, courseTitles: string[]) => void;
-  assignBatchesToTeacher: (teacherName: string, batchIds: string[]) => void;
+  assignCoursesToTeacher: (teacherName: string, courseTitles: string[]) => Promise<boolean>;
+  assignBatchesToTeacher: (teacherName: string, batchIds: string[]) => Promise<boolean>;
   importTeachers: (rows: string[][]) => number;
 
   addCourse: (c: Omit<Course, "chapters" | "cover" | "rating" | "students" | "outcomes" | "tagline" | "description"> & Partial<Course> & { coverFile?: File }) => Promise<boolean>;
   updateCourse: (slug: string, patch: Partial<Course>) => void;
+  /** Apply state already persisted by a dedicated content endpoint without re-syncing the course. */
+  updateCourseLocal: (slug: string, patch: Partial<Course>) => void;
   publishCourse: (slug: string, publish?: boolean) => void;
   importCourses: (rows: string[][]) => number;
 
@@ -140,8 +144,8 @@ type DashboardData = {
   importAssignments: (rows: string[][]) => number;
 
   partResources: PartResourceItem[];
-  addPartResource: (r: Omit<PartResourceItem, "id" | "uploadedAt">) => void;
-  removePartResource: (id: string) => void;
+  addPartResource: (r: Omit<PartResourceItem, "id" | "fileName" | "fileUrl" | "uploadedAt"> & { partId: string; file: File }) => Promise<{ ok: boolean; detail?: string }>;
+  removePartResource: (id: string) => Promise<{ ok: boolean; detail?: string }>;
 
   addCertificate: (c: Certificate) => void;
   importCertificates: (rows: string[][]) => number;
@@ -217,6 +221,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [dataSource, setDataSource] = useState<"api" | "mock">("api");
   const [loading, setLoading] = useState(false);
   const bundleRef = useRef<DashboardBundle | null>(null);
+  const refreshRequestRef = useRef(0);
 
   const applyMappedData = useCallback((bundle: DashboardBundle, mapped: ReturnType<typeof mapDashboardBundle>) => {
     bundleRef.current = bundle;
@@ -224,6 +229,32 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     setStudents(mapped.students as Student[]);
     setTeachers(mapped.teachers as Teacher[]);
     setCourses(mapped.courses as Course[]);
+    const resources = bundle.partResources.flatMap((resource) => {
+      for (const course of mapped.courses) {
+        for (const [chapterIndex, chapter] of course.chapters.entries()) {
+          const partIndex = chapter.parts.findIndex((part) => String(part.id) === String(resource.part));
+          if (partIndex < 0) continue;
+          const fileUrl = resource.file || resource.external_url || null;
+          const fileName = fileUrl
+            ? decodeURIComponent(fileUrl.split("?")[0].split("/").pop() || resource.title)
+            : resource.title;
+          const resourceType = resource.resource_type.toUpperCase();
+          return [{
+            id: String(resource.id),
+            courseSlug: course.slug,
+            chapterIndex,
+            partIndex,
+            title: resource.title,
+            type: resourceType === "PDF" ? "pdf" : resourceType === "DOC" ? "notes" : "other",
+            fileName,
+            fileUrl,
+            uploadedAt: resource.created_at,
+          } satisfies PartResourceItem];
+        }
+      }
+      return [];
+    });
+    setPartResources(resources);
     setCourseCategories(
       (bundle.courseCategories || []).map((c) => ({
         id: String(c.id),
@@ -246,6 +277,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshData = useCallback(async () => {
+    const requestId = ++refreshRequestRef.current;
     if (!getAccessToken()) {
       setDataSource("mock");
       setStudents([]);
@@ -264,18 +296,21 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       setFaqs([]);
       setSeoPages([]);
       setHomepage({ heroTitle: "", heroCta: "", heroSubtitle: "", logoUrl: null });
+      setPartResources([]);
       return;
     }
     setLoading(true);
     try {
       const bundle = await fetchDashboardBundle();
-      if (bundle) {
+      // A newer refresh was requested while this request was in flight. Its data
+      // is authoritative, so a late response must not replace current state.
+      if (bundle && requestId === refreshRequestRef.current) {
         applyMappedData(bundle, mapDashboardBundle(bundle));
       }
     } catch (err) {
       console.error("[dashboard] failed to load API bundle", err);
     } finally {
-      setLoading(false);
+      if (requestId === refreshRequestRef.current) setLoading(false);
     }
   }, [applyMappedData]);
 
@@ -372,21 +407,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   }, [refreshData, courses]);
 
   const deactivateStudent = useCallback((id: string) => {
-    setStudents((prev) => {
-      const target = prev.find((s) => s.id === id);
-      const key = (target as { _uuid?: string } | undefined)?._uuid || id;
-      syncAfter({ type: "deactivateStudent", id: key }, refreshData);
-      return prev.map((s) => (s.id === id ? { ...s, status: "Deactivated" as const } : s));
-    });
-  }, [refreshData]);
-
-  const reactivateStudent = useCallback((id: string) => {
-    setStudents((prev) => {
-      const target = prev.find((s) => s.id === id);
-      const key = (target as { _uuid?: string } | undefined)?._uuid || id;
-      syncAfter({ type: "reactivateStudent", id: key }, refreshData);
-      return prev.map((s) => (s.id === id ? { ...s, status: "Active" as const } : s));
-    });
+    setStudents((prev) => prev.map((s) => (s.id === id ? { ...s, status: "Deactivated" as const } : s)));
+    syncAfter({ type: "deactivateStudent", id }, refreshData);
   }, [refreshData]);
 
   const deleteStudent = useCallback((id: string) => {
@@ -468,18 +490,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     setTeachers((prev) => prev.map((t) => (t.name === name ? { ...t, ...patch } : t)));
   }, []);
 
-  const assignCourseToTeacher = useCallback((teacherName: string, courseTitle: string) => {
-    setTeachers((prev) =>
-      prev.map((t) => (t.name === teacherName ? { ...t, courses: t.courses + 1 } : t)),
-    );
-    setCourses((prev) =>
-      prev.map((c) => (c.title === courseTitle ? { ...c, instructor: teacherName } : c)),
-    );
-  }, []);
-
-  const assignCoursesToTeacher = useCallback((teacherName: string, courseTitles: string[]) => {
+  const assignCoursesToTeacher = useCallback(async (teacherName: string, courseTitles: string[]) => {
     const unique = [...new Set(courseTitles.filter(Boolean))];
-    if (!unique.length) return;
+    if (!unique.length) return false;
+
+    // Optimistic UI update
     setCourses((prev) =>
       prev.map((c) => (unique.includes(c.title) ? { ...c, instructor: teacherName } : c)),
     );
@@ -488,18 +503,81 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         t.name === teacherName ? { ...t, courses: unique.length } : t,
       ),
     );
-  }, []);
 
-  const assignBatchesToTeacher = useCallback((teacherName: string, batchIds: string[]) => {
+    if (!getAccessToken()) return true;
+
+    const teacherRow = teachers.find((t) => t.name === teacherName);
+    const uuid = teacherRow?._uuid;
+    if (!uuid) {
+      console.error("[dashboard] assignCoursesToTeacher: missing teacher uuid for", teacherName);
+      return false;
+    }
+
+    const courseUuids = unique
+      .map((title) => courses.find((c) => c.title === title)?._uuid)
+      .filter((id): id is string => Boolean(id))
+      .map(String);
+
+    if (!courseUuids.length) {
+      console.error("[dashboard] assignCoursesToTeacher: no course uuids resolved", unique);
+      return false;
+    }
+
+    const res = await apiMutateDetailed(
+      teacherEndpoints.assignCourses(String(uuid)),
+      "POST",
+      { course_ids: courseUuids, replace: true },
+    );
+    if (!res.data) {
+      console.error("[dashboard] assignCoursesToTeacher failed", res.error);
+      await refreshData();
+      return false;
+    }
+    await refreshData();
+    return true;
+  }, [teachers, courses, refreshData]);
+
+  const assignCourseToTeacher = useCallback(
+    (teacherName: string, courseTitle: string) => {
+      void assignCoursesToTeacher(teacherName, [courseTitle]);
+    },
+    [assignCoursesToTeacher],
+  );
+
+  const assignBatchesToTeacher = useCallback(async (teacherName: string, batchIds: string[]) => {
     const unique = [...new Set(batchIds.filter(Boolean))];
-    if (!unique.length) return;
+    if (!unique.length) return false;
+
     setBatches((prev) =>
       prev.map((b) => (unique.includes(b.id) ? { ...b, teacher: teacherName } : b)),
     );
     setShifts((prev) =>
       prev.map((s) => (unique.includes(s.batch) ? { ...s, teacher: teacherName } : s)),
     );
-  }, []);
+
+    if (!getAccessToken()) return true;
+
+    const teacherUuid = teachers.find((t) => t.name === teacherName)?._uuid;
+    if (!teacherUuid) {
+      console.error("[dashboard] assignBatchesToTeacher: missing teacher uuid");
+      return false;
+    }
+
+    let ok = true;
+    for (const code of unique) {
+      const batchUuid = batches.find((b) => b.id === code)?._uuid;
+      if (!batchUuid) {
+        ok = false;
+        continue;
+      }
+      const res = await apiMutateDetailed(batchEndpoints.detail(String(batchUuid)), "PATCH", {
+        teacher: teacherUuid,
+      });
+      if (!res.data) ok = false;
+    }
+    await refreshData();
+    return ok;
+  }, [teachers, batches, refreshData]);
 
   const importTeachers = useCallback((rows: string[][]) => {
     const data = rows.slice(1).filter((r) => r[0]);
@@ -610,7 +688,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     return false;
   }, [refreshData]);
 
-  const updateCourse = useCallback((slug: string, patch: Partial<Course>) => {
+  const updateCourseLocal = useCallback((slug: string, patch: Partial<Course>) => {
     setCourses((prev) =>
       prev.map((c) => {
         if (c.slug !== slug) return c;
@@ -621,8 +699,12 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         return next;
       }),
     );
+  }, []);
+
+  const updateCourse = useCallback((slug: string, patch: Partial<Course>) => {
+    updateCourseLocal(slug, patch);
     syncAfter({ type: "updateCourse", slug, patch }, refreshData);
-  }, [refreshData]);
+  }, [refreshData, updateCourseLocal]);
 
   const publishCourse = useCallback((slug: string, publish = true) => {
     setCourses((prev) =>
@@ -818,19 +900,34 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     return data.length;
   }, []);
 
-  const addPartResource = useCallback((r: Omit<PartResourceItem, "id" | "uploadedAt">) => {
-    setPartResources((prev) => [
-      {
-        ...r,
-        id: `RES-${Date.now()}-${prev.length}`,
-        uploadedAt: new Date().toISOString(),
-      },
-      ...prev,
-    ]);
+  const addPartResource = useCallback(async (r: Parameters<DashboardData["addPartResource"]>[0]) => {
+    const result = await contentApi.uploadPartResource({
+      part: r.partId,
+      title: r.title,
+      type: r.type,
+      file: r.file,
+    });
+    if (!result.ok || !result.data) return { ok: false, detail: result.detail || "Upload failed" };
+    const data = result.data;
+    setPartResources((prev) => [{
+      id: String(data.id),
+      courseSlug: r.courseSlug,
+      chapterIndex: r.chapterIndex,
+      partIndex: r.partIndex,
+      title: data.title,
+      type: r.type,
+      fileName: r.file.name,
+      fileUrl: data.file || data.external_url || null,
+      uploadedAt: data.created_at,
+    }, ...prev]);
+    return { ok: true };
   }, []);
 
-  const removePartResource = useCallback((id: string) => {
+  const removePartResource = useCallback(async (id: string) => {
+    const result = await contentApi.deletePartResource(id);
+    if (!result.ok) return { ok: false, detail: result.detail || "Deletion failed" };
     setPartResources((prev) => prev.filter((r) => r.id !== id));
+    return { ok: true };
   }, []);
 
 
@@ -1021,9 +1118,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           excerpt: patch.excerpt,
         },
       },
-      refreshData,
     );
-  }, [refreshData]);
+  }, []);
 
   const addBlog = useCallback((post: BlogPost) => {
     setBlog((prev) => [post, ...prev]);
@@ -1037,15 +1133,14 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           is_published: true,
         },
       },
-      refreshData,
     );
-  }, [refreshData]);
+  }, []);
 
   const updateEvent = useCallback((title: string, patch: Partial<EventItem>) => {
     setEvents((prev) => prev.map((e) => (e.title === title ? { ...e, ...patch } : e)));
     const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-    syncAfter({ type: "updateEvent", slug, patch: { title: patch.title, location: patch.location } }, refreshData);
-  }, [refreshData]);
+    syncAfter({ type: "updateEvent", slug, patch: { title: patch.title, location: patch.location } });
+  }, []);
 
   const updateTestimonial = useCallback((name: string, patch: Partial<Testimonial>) => {
     setTestimonials((prev) => prev.map((t) => (t.name === name ? { ...t, ...patch } : t)));
@@ -1062,12 +1157,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
             id: faq.id,
             patch: { question: patch.q, answer: patch.a },
           },
-          refreshData,
         );
       }
       return next;
     });
-  }, [refreshData]);
+  }, []);
 
   const updateSeoPage = useCallback((path: string, patch: Partial<SeoPage>) => {
     setSeoPages((prev) => prev.map((p) => (p.path === path ? { ...p, ...patch } : p)));
@@ -1110,7 +1204,6 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       addStudent,
       updateStudent,
       deactivateStudent,
-      reactivateStudent,
       deleteStudent,
       importStudents,
       addTeacher,
@@ -1121,6 +1214,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       importTeachers,
       addCourse,
       updateCourse,
+      updateCourseLocal,
       publishCourse,
       importCourses,
       addBatch,
@@ -1160,9 +1254,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       students, teachers, courses, courseCategories, batches, shifts, assignments, certificates, tasks, taskBoard, submissions,
       blog, events, testimonials, faqs, seoPages, homepage, partResources,
       dataSource, loading, refreshData,
-      addStudent, updateStudent, deactivateStudent, reactivateStudent, deleteStudent, importStudents,
+      addStudent, updateStudent, deactivateStudent, deleteStudent, importStudents,
       addTeacher, updateTeacher, assignCourseToTeacher, assignCoursesToTeacher, assignBatchesToTeacher, importTeachers,
-      addCourse, updateCourse, publishCourse, importCourses,
+      addCourse, updateCourse, updateCourseLocal, publishCourse, importCourses,
       addBatch, updateBatch, importBatches,
       addShift, updateShift, importShifts,
       addAssignment, updateAssignment, importAssignments,

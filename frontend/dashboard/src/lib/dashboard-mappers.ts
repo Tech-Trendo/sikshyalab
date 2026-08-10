@@ -54,6 +54,8 @@ type MappedTeacher = {
   courses: number;
   avatar: string;
   bio: string;
+  email?: string;
+  phone?: string;
   _uuid?: string;
 };
 
@@ -237,13 +239,14 @@ function mapStudentStatus(s?: string): MappedStudent["status"] {
   switch ((s || "").toUpperCase()) {
     case "ACTIVE":
       return "Active";
-    case "INACTIVE":
-    case "DROPPED":
-    case "SUSPENDED":
-      return "Deactivated";
     case "GRADUATED":
     case "COMPLETED":
       return "Completed";
+    case "SUSPENDED":
+    case "INACTIVE":
+      return "On Hold";
+    case "DROPPED":
+      return "Deactivated";
     default:
       return "Active";
   }
@@ -406,10 +409,28 @@ function buildLookups(bundle: DashboardBundle) {
   }
 
   const teacherCourses = new Map<string, number>();
+  for (const t of bundle.teachers) {
+    const fromApi =
+      typeof t.assigned_courses_count === "number"
+        ? t.assigned_courses_count
+        : Array.isArray(t.assigned_course_ids)
+          ? t.assigned_course_ids.length
+          : Array.isArray(t.assigned_courses)
+            ? t.assigned_courses.length
+            : 0;
+    if (fromApi > 0) {
+      teacherCourses.set(String(t.id), fromApi);
+    }
+  }
+  // Fallback: batch assignments still count when CourseInstructor data is absent.
   for (const b of bundle.batches) {
     if (b.teacher) {
       const key = String(b.teacher);
-      teacherCourses.set(key, (teacherCourses.get(key) || 0) + 1);
+      if (!teacherCourses.has(key)) {
+        teacherCourses.set(key, (teacherCourses.get(key) || 0) + 1);
+      } else {
+        // Prefer assigned_courses_count already set from API; don't double-count.
+      }
     }
   }
 
@@ -482,7 +503,7 @@ export function mapDashboardBundle(bundle: DashboardBundle): MappedDashboardData
       course: courseTitle || "—",
       batch: batchCode || "—",
       shift: mapShiftName(shiftName),
-      status: mapStudentStatus(s.status),
+      status: mapStudentStatus(s.status || enrollment?.status),
       progress: progress?.progress_percent ?? 0,
       fees: { total, paid, due },
       joined: formatDate(s.admission_date),
@@ -500,13 +521,19 @@ export function mapDashboardBundle(bundle: DashboardBundle): MappedDashboardData
       [t.user?.first_name, t.user?.last_name].filter(Boolean).join(" ").trim() ||
       "Instructor";
     const expYears = t.years_of_experience;
+    const assignedCount =
+      typeof t.assigned_courses_count === "number"
+        ? t.assigned_courses_count
+        : L.teacherCourses.get(String(t.id)) || 0;
     return {
       name,
       role: t.designation || "Instructor",
       exp: expYears != null ? `${expYears} yrs` : "—",
-      courses: L.teacherCourses.get(String(t.id)) || 0,
+      courses: assignedCount,
       avatar: t.user?.avatar ? String(t.user.avatar) : "",
       bio: t.bio || "",
+      email: t.user?.email || "",
+      phone: t.user?.phone || "",
       _uuid: String(t.id),
     };
   });

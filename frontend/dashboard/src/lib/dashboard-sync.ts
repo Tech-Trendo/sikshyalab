@@ -660,7 +660,7 @@ export async function runDashboardSync(action: SyncAction): Promise<boolean | st
   }
 }
 
-/** Fire-and-forget sync; always re-fetch after mutate so UI matches server. */
+/** Fire-and-forget sync; callers may opt into a focused follow-up refresh. */
 export function syncAfter(action: SyncAction, refresh?: () => Promise<void>) {
   if (!getAccessToken()) return;
   void runDashboardSync(action).finally(() => {
