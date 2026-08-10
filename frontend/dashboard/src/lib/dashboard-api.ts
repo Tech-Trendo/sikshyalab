@@ -7,7 +7,6 @@ import { getAccessToken } from "./api";
 import { resolveApiBase } from "./api-base";
 import { batchEndpoints, courseEndpoints } from "./api-endpoints";
 import { cmsApi } from "./cms-api";
-import { handleDeactivatedHttpResponse } from "./account-deactivated";
 
 const API_BASE = resolveApiBase();
 
@@ -61,11 +60,7 @@ export async function apiList<T>(path: string): Promise<T[]> {
       const t = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       const res = await fetch(url, { headers: headers(), signal: controller.signal });
       clearTimeout(t);
-      if (!res.ok) {
-        const raw = await res.json().catch(() => null);
-        if (handleDeactivatedHttpResponse(res.status, raw)) return all.length ? all : [];
-        return all.length ? all : [];
-      }
+      if (!res.ok) return all.length ? all : [];
       const raw = await res.json().catch(() => null);
       let rows: T[] = [];
       let totalPages = 1;
@@ -102,11 +97,7 @@ async function apiGet<T>(path: string): Promise<T | null> {
     const t = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     const res = await fetch(`${API_BASE}${path}`, { headers: headers(), signal: controller.signal });
     clearTimeout(t);
-    if (!res.ok) {
-      const raw = await res.json().catch(() => null);
-      if (handleDeactivatedHttpResponse(res.status, raw)) return null;
-      return null;
-    }
+    if (!res.ok) return null;
     return parseBody<T>(res);
   } catch {
     return null;
@@ -147,9 +138,6 @@ export async function apiMutateDetailed<T>(
       raw = null;
     }
     if (!res.ok) {
-      if (handleDeactivatedHttpResponse(res.status, raw)) {
-        return { data: null, error: "Account deactivated", status: res.status };
-      }
       return { data: null, error: errorMessageFromBody(raw, res.status), status: res.status };
     }
     // Re-wrap parsed body (already consumed as raw)
@@ -197,8 +185,6 @@ export type ApiStudentProfile = {
   student_id: string;
   full_name?: string;
   status?: string;
-  deactivated_at?: string | null;
-  deactivated_by?: string | number | null;
   user?: {
     email?: string;
     phone?: string;
@@ -219,6 +205,15 @@ export type ApiTeacherProfile = {
   bio?: string;
   years_of_experience?: number | null;
   user?: { email?: string; phone?: string; avatar?: string | null; first_name?: string; last_name?: string };
+  assigned_courses?: Array<{
+    id: string;
+    title: string;
+    slug: string;
+    is_primary?: boolean;
+    assigned_at?: string | null;
+  }>;
+  assigned_course_ids?: string[];
+  assigned_courses_count?: number;
 };
 
 export async function fetchStudentProfileMe(): Promise<ApiStudentProfile | null> {
@@ -345,6 +340,16 @@ export type ApiChapterRow = {
     estimated_minutes?: number | null;
   }[];
 };
+export type ApiPartResourceRow = {
+  id: string;
+  part: string;
+  title: string;
+  resource_type: string;
+  file: string | null;
+  external_url?: string;
+  created_at: string;
+  updated_at?: string;
+};
 export type ApiAssignmentRow = {
   id: string;
   title: string;
@@ -431,6 +436,7 @@ export type DashboardBundle = {
   studentFees: ApiStudentFeeRow[];
   courseProgress: ApiCourseProgressRow[];
   chapters: ApiChapterRow[];
+  partResources: ApiPartResourceRow[];
   assignments: ApiAssignmentRow[];
   submissions: ApiSubmissionRow[];
   certificates: ApiCertificateRow[];
@@ -458,6 +464,7 @@ export async function fetchDashboardBundle(): Promise<DashboardBundle | null> {
       studentFees,
       courseProgress,
       chapters,
+      partResources,
       assignments,
       submissions,
       certificates,
@@ -478,6 +485,7 @@ export async function fetchDashboardBundle(): Promise<DashboardBundle | null> {
       apiList<ApiStudentFeeRow>("/fees/student-fees/"),
       apiList<ApiCourseProgressRow>("/content/course-progress/"),
       apiList<ApiChapterRow>("/content/chapters/"),
+      apiList<ApiPartResourceRow>("/content/resources/"),
       apiList<ApiAssignmentRow>("/assignments/assignments/"),
       apiList<ApiSubmissionRow>("/assignments/submissions/"),
       apiList<ApiCertificateRow>("/certificates/"),
@@ -500,6 +508,7 @@ export async function fetchDashboardBundle(): Promise<DashboardBundle | null> {
       studentFees,
       courseProgress,
       chapters,
+      partResources,
       assignments,
       submissions,
       certificates,

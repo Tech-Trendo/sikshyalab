@@ -28,6 +28,19 @@ export const courseEndpoints = {
   featured: () => withSlash("/courses/courses/featured"),
   categories: () => withSlash("/courses/categories"),
   categoryDetail: (slug: string) => withSlash(`/courses/categories/${encodeURIComponent(slug)}`),
+  instructors: () => withSlash("/courses/instructors"),
+};
+
+export const teacherEndpoints = {
+  list: () => withSlash("/teachers/profiles"),
+  detail: (id: string) => withSlash(`/teachers/profiles/${encodeURIComponent(id)}`),
+  assignCourses: (id: string) =>
+    withSlash(`/teachers/profiles/${encodeURIComponent(id)}/assign-courses`),
+};
+
+export const contentEndpoints = {
+  resources: () => withSlash("/content/resources"),
+  resourceDetail: (id: string) => withSlash(`/content/resources/${encodeURIComponent(id)}`),
 };
 
 /** Public site path for a course (not an API URL). */

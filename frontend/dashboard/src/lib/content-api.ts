@@ -2,9 +2,10 @@
  * Course content API — chapters & parts CRUD.
  */
 
-import { getAccessToken } from "./api";
+import { authedFetch, getAccessToken } from "./api";
 
 import { resolveApiBase } from "./api-base";
+import { contentEndpoints } from "./api-endpoints";
 
 const API_BASE = resolveApiBase();
 
@@ -69,6 +70,42 @@ export type ContentPart = {
   is_published?: boolean;
   estimated_minutes?: number;
 };
+
+export type PartResource = {
+  id: string;
+  part: string;
+  title: string;
+  resource_type: "PDF" | "DOC" | "LINK" | "OTHER";
+  file: string | null;
+  external_url: string;
+  order?: number;
+  created_at: string;
+  updated_at: string;
+};
+
+function mapResourceType(type: "video" | "notes" | "pdf" | "other"): PartResource["resource_type"] {
+  if (type === "pdf") return "PDF";
+  if (type === "notes") return "DOC";
+  return "OTHER";
+}
+
+async function multipartMutate<T>(path: string, method: string, form?: FormData): Promise<{ ok: boolean; data: T | null; detail?: string }> {
+  const res = await authedFetch(path, {
+    method,
+    body: form,
+    // Do not set Content-Type: the browser adds the multipart boundary.
+    headers: { Accept: "application/json" },
+  });
+  if (!res) return { ok: false, data: null, detail: "Network error" };
+  const data = await parseBody<T>(res);
+  if (!res.ok) {
+    const detail = data && typeof data === "object" && "detail" in (data as object)
+      ? String((data as { detail?: unknown }).detail)
+      : `Request failed (${res.status})`;
+    return { ok: false, data: null, detail };
+  }
+  return { ok: true, data };
+}
 
 function mapPartTypeToApi(type: "video" | "pdf" | "notes"): string {
   if (type === "video") return "VIDEO";
@@ -137,4 +174,15 @@ export const contentApi = {
   },
 
   deletePart: (id: string) => mutate<void>(`/content/parts/${id}/`, "DELETE"),
+
+  uploadPartResource: (payload: { part: string; title: string; type: "video" | "notes" | "pdf" | "other"; file: File }) => {
+    const form = new FormData();
+    form.append("part", payload.part);
+    form.append("title", payload.title);
+    form.append("resource_type", mapResourceType(payload.type));
+    form.append("file", payload.file);
+    return multipartMutate<PartResource>(contentEndpoints.resources(), "POST", form);
+  },
+
+  deletePartResource: (id: string) => multipartMutate<void>(contentEndpoints.resourceDetail(id), "DELETE"),
 };
