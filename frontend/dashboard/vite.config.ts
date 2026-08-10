@@ -44,6 +44,19 @@ export default defineConfig({
       host: true,
       port: 5173,
       strictPort: true,
+      // The TanStack Router plugin owns this generated file. Letting Vite watch
+      // it can turn a route-codegen write into an HMR/full-reload feedback loop.
+      watch: {
+        ignored: [
+          "**/node_modules/**",
+          "**/.vinxi/**",
+          "**/.tanstack/**",
+          "**/dist/**",
+          "**/dist-ssr/**",
+          "**/.output/**",
+          "**/src/routeTree.gen.ts",
+        ],
+      },
       proxy: {
         "/api/v1": {
           target: djangoTarget,
