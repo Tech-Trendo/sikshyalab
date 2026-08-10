@@ -29,12 +29,17 @@ import { cmsApi, cmsKeys } from "@/lib/cms-api";
 import { useQueryClient } from "@tanstack/react-query";
 
 export const Route = createFileRoute("/dashboard/content")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    tab: typeof search.tab === "string" ? search.tab : "home",
+  }),
   component: ContentPage,
 });
 
 type FaqRow = { id: string | number; q: string; a: string; category: string };
 
 function ContentPage() {
+  const { tab } = Route.useSearch();
+  const navigate = Route.useNavigate();
   const qc = useQueryClient();
   const { homepage, updateHomepage } = useDashboardData();
   const { data: apiFaqs, isLoading: faqsLoading } = useFaqsQuery();
@@ -330,7 +335,14 @@ function ContentPage() {
         </p>
       )}
 
-      <Tabs defaultValue="home" className="mt-6">
+      <Tabs
+        value={tab}
+        onValueChange={(nextTab) => void navigate({
+          replace: true,
+          search: (previous) => ({ ...previous, tab: nextTab }),
+        })}
+        className="mt-6"
+      >
         <TabsList className="flex h-auto w-full flex-wrap gap-1 sm:flex-nowrap sm:overflow-x-auto">
           <TabsTrigger value="home">Homepage</TabsTrigger>
           <TabsTrigger value="about">About Us</TabsTrigger>
