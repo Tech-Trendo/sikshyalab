@@ -41,8 +41,11 @@ export interface ButtonProps
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot : "button";
+    // If this renders a real <button> and no explicit `type` was provided,
+    // default to `type="button"` to avoid accidental form submission.
+    const finalProps = asChild ? props : { type: (props.type as any) ?? "button", ...props };
     return (
-      <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
+      <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...finalProps} />
     );
   },
 );
