@@ -17,7 +17,7 @@ export const Route = createFileRoute("/dashboard/profile")({
 });
 
 function ProfilePage() {
-  const { user, updateProfile, uploadAvatar } = useAuth();
+  const { user, updateProfile, uploadAvatar, isTeacher } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -81,14 +81,16 @@ function ProfilePage() {
       return;
     }
     if (!form.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
-      toast.error("Enter a valid email");
-      return;
+      if (!isTeacher) {
+        toast.error("Enter a valid email");
+        return;
+      }
     }
     setSaving(true);
     try {
       await updateProfile({
         name: form.name.trim(),
-        email: form.email.trim(),
+        ...(isTeacher ? {} : { email: form.email.trim() }),
         phone: form.phone.trim(),
         title: form.title.trim(),
         bio: form.bio.trim(),
@@ -197,11 +199,19 @@ function ProfilePage() {
                 className="mt-1.5"
                 type="email"
                 value={form.email}
+                disabled={isTeacher}
+                readOnly={isTeacher}
                 onChange={(e) => {
+                  if (isTeacher) return;
                   setForm({ ...form, email: e.target.value });
                   setDirty(true);
                 }}
               />
+              {isTeacher ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Email matches the address registered by your admin and cannot be changed here.
+                </p>
+              ) : null}
             </div>
             <div>
               <Label>Phone</Label>
