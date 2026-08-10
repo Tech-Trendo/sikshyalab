@@ -14,7 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { PersonAvatar } from "@/components/dashboard/PersonAvatar";
-import { GraduationCap, BookOpen, Star, Plus, Mail, Briefcase, Layers, Trash2 } from "lucide-react";
+import { GraduationCap, BookOpen, Star, Plus, Mail, Briefcase, Layers, Trash2, Pencil } from "lucide-react";
 import { paginate } from "@/lib/dashboard-utils";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -44,6 +44,7 @@ function TeachersPage() {
   const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
   const [deletingTeacher, setDeletingTeacher] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
   const [form, setForm] = useState(emptyForm);
   const paged = paginate(teachers, page);
   const avgRating = useMemo(() => averageRating(reviews), [reviews]);
@@ -95,11 +96,49 @@ function TeachersPage() {
   };
 
   const saveTeacher = async () => {
-    if (!form.name.trim() || !form.role.trim() || !form.email.trim()) {
-      toast.error("Name, role, and email are required");
+    if (!form.role.trim()) {
+      toast.error("Role is required");
       return;
     }
     try {
+      if (editingTeacher) {
+        const uuid = editingTeacher._uuid ? String(editingTeacher._uuid) : "";
+        if (!uuid) {
+          toast.error("Teacher id missing");
+          return;
+        }
+
+        const yearsRaw = String(form.exp || "");
+        const years = Number((yearsRaw.match(/\d+/) || [])[0]) || 0;
+
+        const res = await apiMutateDetailed(
+          `/teachers/profiles/${encodeURIComponent(uuid)}/`,
+          "PATCH",
+          {
+            designation: form.role.trim(),
+            bio: form.bio || "",
+            years_of_experience: years,
+          },
+        );
+
+        if (res.status >= 200 && res.status < 300) {
+          toast.success(`${editingTeacher.name} updated`);
+          setFormOpen(false);
+          setEditingTeacher(null);
+          setForm(emptyForm);
+          await refreshData();
+        } else {
+          toast.error(res.error || "Could not update teacher");
+        }
+        return;
+      }
+
+      // Add teacher
+      if (!form.name.trim() || !form.email.trim()) {
+        toast.error("Name and email are required");
+        return;
+      }
+
       const res = await addTeacher({
         ...form,
         email: form.email.trim(),
@@ -133,6 +172,7 @@ function TeachersPage() {
       } else {
         toast.success(`Added ${form.name}`);
       }
+
       setFormOpen(false);
       setForm(emptyForm);
     } catch (err) {
@@ -156,7 +196,15 @@ function TeachersPage() {
               exportRows={teachers.map((t) => [t.name, t.role, t.exp, t.courses])}
               onImport={(rows) => toast.success(`Imported ${importTeachers(rows)} teacher(s)`)}
             />
-            <Button size="sm" className="btn-highlight" onClick={() => { setForm(emptyForm); setFormOpen(true); }}>
+            <Button
+              size="sm"
+              className="btn-highlight"
+              onClick={() => {
+                setEditingTeacher(null);
+                setForm(emptyForm);
+                setFormOpen(true);
+              }}
+            >
               <Plus className="mr-1 h-4 w-4" /> Add teacher
             </Button>
           </div>
@@ -197,6 +245,26 @@ function TeachersPage() {
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <Button variant="outline" size="sm" onClick={() => setProfile(t)}>View profile</Button>
                 <Button size="sm" onClick={() => openAssign(t)}>Assign courses</Button>
+                {isAdmin && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="col-span-2"
+                    onClick={() => {
+                      setEditingTeacher(t);
+                      setForm({
+                        name: t.name,
+                        role: t.role,
+                        email: t.email || "",
+                        exp: t.exp,
+                        bio: t.bio,
+                      });
+                      setFormOpen(true);
+                    }}
+                  >
+                    <Pencil className="mr-1 h-4 w-4" /> Edit teacher
+                  </Button>
+                )}
                 <Button variant="secondary" size="sm" className="col-span-2" onClick={() => openAssignBatches(t)}>
                   <Layers className="mr-1 h-3.5 w-3.5" /> Assign batches
                 </Button>
@@ -218,19 +286,57 @@ function TeachersPage() {
       </div>
       <DataPagination page={paged.page} totalPages={paged.totalPages} total={paged.total} from={paged.from} to={paged.to} onPageChange={setPage} />
 
-      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+      <Dialog
+        open={formOpen}
+        onOpenChange={(o) => {
+          setFormOpen(o);
+          if (!o) {
+            setEditingTeacher(null);
+            setForm(emptyForm);
+          }
+        }}
+      >
         <DialogContent>
-          <DialogHeader><DialogTitle>Add teacher</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{editingTeacher ? "Edit teacher" : "Add teacher"}</DialogTitle>
+          </DialogHeader>
           <div className="grid gap-3">
-            <div><Label>Name</Label><Input className="mt-1.5" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-            <div><Label>Email</Label><Input className="mt-1.5" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="teacher@example.com" /></div>
+            <div>
+              <Label>Name</Label>
+              <Input
+                className="mt-1.5"
+                value={form.name}
+                disabled={Boolean(editingTeacher)}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Email</Label>
+              <Input
+                className="mt-1.5"
+                type="email"
+                value={form.email}
+                disabled={Boolean(editingTeacher)}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="teacher@example.com"
+              />
+            </div>
             <div><Label>Role</Label><Input className="mt-1.5" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} placeholder="Senior Full-Stack Instructor" /></div>
             <div><Label>Experience</Label><Input className="mt-1.5" value={form.exp} onChange={(e) => setForm({ ...form, exp: e.target.value })} placeholder="5+ yrs" /></div>
             <div><Label>Bio</Label><Textarea className="mt-1.5" rows={3} value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} /></div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button>
-            <Button onClick={saveTeacher}>Add teacher</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setFormOpen(false);
+                setEditingTeacher(null);
+                setForm(emptyForm);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={saveTeacher}>{editingTeacher ? "Save changes" : "Add teacher"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -251,7 +357,7 @@ function TeachersPage() {
               <div className="space-y-2 text-sm">
                 <p className="flex items-center gap-2"><Briefcase className="h-4 w-4 text-muted-foreground" /> {profile.exp} experience</p>
                 <p className="flex items-center gap-2"><BookOpen className="h-4 w-4 text-muted-foreground" /> {profile.courses} active courses</p>
-                <p className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" /> {profile.name.toLowerCase().replace(/\s+/g, ".")}@shikshalab.io</p>
+                <p className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" /> {profile.email || "—"}</p>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setProfile(null)}>Close</Button>
@@ -288,8 +394,14 @@ function TeachersPage() {
               disabled={!assignTeacher || selectedCourses.length === 0}
               onClick={() => {
                 if (assignTeacher) {
-                  assignCoursesToTeacher(assignTeacher.name, selectedCourses);
-                  toast.success(`Assigned ${selectedCourses.length} course(s) to ${assignTeacher.name}`);
+                  void (async () => {
+                    const ok = await assignCoursesToTeacher(assignTeacher.name, selectedCourses);
+                    if (ok) {
+                      toast.success(`Assigned ${selectedCourses.length} course(s) to ${assignTeacher.name}`);
+                    } else {
+                      toast.error("Could not save course assignments");
+                    }
+                  })();
                 }
                 setAssignOpen(false);
               }}
@@ -328,8 +440,14 @@ function TeachersPage() {
               disabled={!assignTeacher || selectedBatches.length === 0}
               onClick={() => {
                 if (assignTeacher) {
-                  assignBatchesToTeacher(assignTeacher.name, selectedBatches);
-                  toast.success(`Assigned ${selectedBatches.length} batch(es) to ${assignTeacher.name}`);
+                  void (async () => {
+                    const ok = await assignBatchesToTeacher(assignTeacher.name, selectedBatches);
+                    if (ok) {
+                      toast.success(`Assigned ${selectedBatches.length} batch(es) to ${assignTeacher.name}`);
+                    } else {
+                      toast.error("Could not save batch assignments");
+                    }
+                  })();
                 }
                 setAssignBatchOpen(false);
               }}
