@@ -141,6 +141,8 @@ function ProfilePage() {
               </button>
               <input
                 ref={fileRef}
+                id="profile-avatar"
+                name="avatar"
                 type="file"
                 accept="image/png,image/jpeg,image/webp,image/gif"
                 className="hidden"
@@ -183,8 +185,12 @@ function ProfilePage() {
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <Label>Full name</Label>
+              <Label htmlFor="profile-name">Full name</Label>
               <Input
+                id="profile-name"
+                name="name"
+                type="text"
+                autoComplete="name"
                 className="mt-1.5"
                 value={form.name}
                 onChange={(e) => {
@@ -194,10 +200,13 @@ function ProfilePage() {
               />
             </div>
             <div>
-              <Label>Email</Label>
+              <Label htmlFor="profile-email">Email</Label>
               <Input
+                id="profile-email"
+                name="email"
                 className="mt-1.5"
                 type="email"
+                autoComplete="email"
                 value={form.email}
                 disabled={isTeacher}
                 readOnly={isTeacher}
@@ -214,8 +223,12 @@ function ProfilePage() {
               ) : null}
             </div>
             <div>
-              <Label>Phone</Label>
+              <Label htmlFor="profile-phone">Phone</Label>
               <Input
+                id="profile-phone"
+                name="phone"
+                type="tel"
+                autoComplete="tel"
                 className="mt-1.5"
                 value={form.phone}
                 onChange={(e) => {
@@ -226,8 +239,12 @@ function ProfilePage() {
               />
             </div>
             <div>
-              <Label>Title / headline</Label>
+              <Label htmlFor="profile-title">Title / headline</Label>
               <Input
+                id="profile-title"
+                name="title"
+                type="text"
+                autoComplete="organization-title"
                 className="mt-1.5"
                 value={form.title}
                 onChange={(e) => {
@@ -238,8 +255,12 @@ function ProfilePage() {
               />
             </div>
             <div>
-              <Label>Location</Label>
+              <Label htmlFor="profile-location">Location</Label>
               <Input
+                id="profile-location"
+                name="address-level2"
+                type="text"
+                autoComplete="address-level2"
                 className="mt-1.5"
                 value={form.location}
                 onChange={(e) => {
@@ -250,8 +271,10 @@ function ProfilePage() {
               />
             </div>
             <div className="sm:col-span-2">
-              <Label>Bio</Label>
+              <Label htmlFor="profile-bio">Bio</Label>
               <Textarea
+                id="profile-bio"
+                name="bio"
                 className="mt-1.5"
                 rows={4}
                 value={form.bio}

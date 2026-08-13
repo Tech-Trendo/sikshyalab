@@ -91,7 +91,9 @@ export default function ChangePasswordPage() {
               </Label>
               <Input
                 id="old"
+                name="old_password"
                 type="password"
+                autoComplete="current-password"
                 value={oldPassword}
                 onChange={(e) => setOldPassword(e.target.value)}
                 className={authInputClass}
@@ -105,7 +107,9 @@ export default function ChangePasswordPage() {
               </Label>
               <Input
                 id="old"
+                name="old_password"
                 type="password"
+                autoComplete="current-password"
                 value={oldPassword}
                 onChange={(e) => setOldPassword(e.target.value)}
                 className={authInputClass}
@@ -118,7 +122,9 @@ export default function ChangePasswordPage() {
             </Label>
             <Input
               id="password"
+              name="password"
               type="password"
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -131,7 +137,9 @@ export default function ChangePasswordPage() {
             </Label>
             <Input
               id="confirm"
+              name="confirm_password"
               type="password"
+              autoComplete="new-password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               required

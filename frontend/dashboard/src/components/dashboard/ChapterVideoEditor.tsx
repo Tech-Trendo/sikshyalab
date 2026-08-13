@@ -13,7 +13,7 @@ export default function ChapterVideoEditor({ courseSlug, chapterIdx, chapter }: 
   chapterIdx: number;
   chapter: any;
 }) {
-  const { updateCourseLocal, courses } = useDashboardData();
+  const { updateCourse, courses } = useDashboardData() as any;
   const existingVideo = chapter?.video || null;
   const [videoUrl, setVideoUrl] = useState(existingVideo?.url || "");
   const [parts, setParts] = useState<Part[]>(existingVideo?.parts?.slice() || []);
@@ -53,7 +53,7 @@ export default function ChapterVideoEditor({ courseSlug, chapterIdx, chapter }: 
       const nextChapters = course.chapters.map((ch: any, i: number) =>
         i === chapterIdx ? { ...ch, video: { url: videoUrl.trim(), parts } } : ch,
       );
-      updateCourseLocal(courseSlug, { chapters: nextChapters });
+      updateCourse(courseSlug, { chapters: nextChapters });
       toast.success("Chapter video updated locally — backend persistence requires API support.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not save");
@@ -65,8 +65,15 @@ export default function ChapterVideoEditor({ courseSlug, chapterIdx, chapter }: 
   return (
     <div className="mt-3 space-y-3">
       <div>
-        <Label>Video URL</Label>
-        <Input className="mt-1.5" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="/media/videos/… or https://…" />
+        <Label htmlFor="chapter-video-url">Video URL</Label>
+        <Input
+          id="chapter-video-url"
+          name="video_url"
+          className="mt-1.5"
+          value={videoUrl}
+          onChange={(e) => setVideoUrl(e.target.value)}
+          placeholder="/media/videos/… or https://…"
+        />
       </div>
       {videoUrl ? (
         <div>
@@ -76,7 +83,12 @@ export default function ChapterVideoEditor({ courseSlug, chapterIdx, chapter }: 
               <div key={String(p.id)} className="rounded-md border border-border/60 p-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex-1">
-                    <Input value={p.title} onChange={(e) => setParts((prev) => prev.map((x) => (x.id === p.id ? { ...x, title: e.target.value } : x)))} />
+                    <Input
+                      id={`chapter-part-title-${p.id}`}
+                      name={`part_title_${p.id}`}
+                      value={p.title}
+                      onChange={(e) => setParts((prev) => prev.map((x) => (x.id === p.id ? { ...x, title: e.target.value } : x)))}
+                    />
                     <div className="text-xs text-muted-foreground mt-1">{new Date(p.start_time * 1000).toISOString().slice(11, 19)} - {new Date(p.end_time * 1000).toISOString().slice(11, 19)}</div>
                   </div>
                   <div className="flex flex-col gap-1">

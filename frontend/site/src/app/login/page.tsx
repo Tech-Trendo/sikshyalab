@@ -115,6 +115,7 @@ function Login() {
             </Label>
             <Input
               id="email"
+              name="email"
               type="email"
               autoComplete="email"
               value={email}
@@ -131,6 +132,7 @@ function Login() {
             <div className="relative">
               <Input
                 id="password"
+                name="password"
                 type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
                 value={password}

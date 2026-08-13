@@ -25,6 +25,9 @@ export function resolveCourseThumbnail(
   if (!resolved || isStockCourseCover(resolved)) return "";
 
   if (version == null || version === "") return resolved;
+  // Never mutate SigV4 / S3 query strings — extra params invalidate the signature
+  // (S3 returns XML → browser CORB on <img>).
+  if (/[?&]X-Amz-(?:Algorithm|Signature)=/i.test(resolved)) return resolved;
   const v = encodeURIComponent(String(version));
   return resolved.includes("?") ? `${resolved}&v=${v}` : `${resolved}?v=${v}`;
 }

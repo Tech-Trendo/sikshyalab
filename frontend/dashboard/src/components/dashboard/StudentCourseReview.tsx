@@ -70,8 +70,10 @@ export function StudentCourseReview({ courseName, completed }: Props) {
           </div>
         </div>
         <div>
-          <Label>Your review</Label>
+          <Label htmlFor="student-course-review">Your review</Label>
           <Textarea
+            id="student-course-review"
+            name="review"
             className="mt-1.5"
             rows={4}
             placeholder="What did you learn? How did Shiksha Lab help your career?"

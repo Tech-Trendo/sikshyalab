@@ -3,8 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Calendar, Clock, MapPin } from "lucide-react";
-import { shouldUnoptimizeImageSrc } from "@/lib/env";
 import { cn } from "@/lib/utils";
+import { MediaImage } from "@/components/media/MediaImage";
+import { isDjangoMediaSrc } from "@/lib/env";
 
 export type EventCardProps = {
   slug: string;
@@ -33,6 +34,7 @@ export function EventCard({
   className,
 }: EventCardProps) {
   const detailHref = `/events/${slug}`;
+  const Cover = isDjangoMediaSrc(cover) ? MediaImage : Image;
 
   return (
     <article
@@ -45,12 +47,11 @@ export function EventCard({
       )}
     >
       <div className="relative aspect-[16/9] w-full shrink-0 overflow-hidden rounded-t-[10px] bg-[#E8EEF6]">
-        <Image
+        <Cover
           src={cover}
           alt={title}
           fill
           sizes="(max-width: 768px) 100vw, 50vw"
-          unoptimized={shouldUnoptimizeImageSrc(cover)}
           className="object-cover transition-transform duration-[400ms] ease-[cubic-bezier(0.215,0.61,0.355,1)] group-hover:scale-105"
         />
         <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-[5px] bg-brand-orange px-2.5 py-1 text-xs font-semibold text-white">

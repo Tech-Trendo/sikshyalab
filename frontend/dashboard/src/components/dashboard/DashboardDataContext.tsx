@@ -96,7 +96,6 @@ type DashboardData = {
   teachers: Teacher[];
   courses: Course[];
   courseCategories: { id: string; name: string; slug: string }[];
-  replaceCourseCategories: (cats: { id: string; name: string; slug: string }[]) => void;
   batches: Batch[];
   shifts: Shift[];
   assignments: Assignment[];
@@ -115,13 +114,11 @@ type DashboardData = {
   addStudent: (s: Omit<Student, "id" | "avatar" | "progress" | "progressNote" | "fees" | "joined"> & Partial<Pick<Student, "progress" | "progressNote" | "fees">>) => Promise<{ temporaryPassword?: string; emailSent?: boolean; emailError?: string } | void>;
   updateStudent: (id: string, patch: Partial<Student>) => void;
   deactivateStudent: (id: string) => void;
-  reactivateStudent: (id: string) => void;
   deleteStudent: (id: string) => void;
   importStudents: (rows: string[][]) => number;
 
   addTeacher: (t: Omit<Teacher, "avatar" | "courses"> & { courses?: number; email?: string; phone?: string }) => Promise<{ temporaryPassword?: string; emailSent?: boolean; emailError?: string } | void>;
   updateTeacher: (name: string, patch: Partial<Teacher>) => void;
-  removeTeacher: (uuid: string) => void;
   assignCourseToTeacher: (teacherName: string, courseTitle: string) => void;
   assignCoursesToTeacher: (teacherName: string, courseTitles: string[]) => Promise<boolean>;
   assignBatchesToTeacher: (teacherName: string, batchIds: string[]) => Promise<boolean>;
@@ -131,7 +128,6 @@ type DashboardData = {
   updateCourse: (slug: string, patch: Partial<Course>) => void;
   /** Apply state already persisted by a dedicated content endpoint without re-syncing the course. */
   updateCourseLocal: (slug: string, patch: Partial<Course>) => void;
-  removeCourse: (slug: string) => void;
   publishCourse: (slug: string, publish?: boolean) => void;
   importCourses: (rows: string[][]) => number;
 
@@ -184,12 +180,7 @@ type DashboardData = {
   /** `api` when hydrated from backend; empty until authenticated */
   dataSource: "api" | "mock";
   loading: boolean;
-  /**
-   * Re-fetch the full dashboard bundle.
-   * Use `{ silent: true }` after mutations so the layout does not flash a full reload.
-   * Prefer local optimistic updates + syncAfter without refresh for routine saves.
-   */
-  refreshData: (opts?: { silent?: boolean }) => Promise<void>;
+  refreshData: () => Promise<void>;
 };
 
 const DashboardDataContext = createContext<DashboardData | null>(null);
@@ -285,9 +276,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     setDataSource("api");
   }, []);
 
-  const refreshData = useCallback(async (opts?: { silent?: boolean }) => {
+  const refreshData = useCallback(async () => {
     const requestId = ++refreshRequestRef.current;
-    const silent = Boolean(opts?.silent);
     if (!getAccessToken()) {
       setDataSource("mock");
       setStudents([]);
@@ -309,9 +299,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       setPartResources([]);
       return;
     }
-    // Initial/auth hydrate shows loading; post-mutation refreshes must stay silent
-    // or every useDashboardData() consumer remounts as if the dashboard reloaded.
-    if (!silent) setLoading(true);
+    setLoading(true);
     try {
       const bundle = await fetchDashboardBundle();
       // A newer refresh was requested while this request was in flight. Its data
@@ -322,7 +310,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error("[dashboard] failed to load API bundle", err);
     } finally {
-      if (!silent && requestId === refreshRequestRef.current) setLoading(false);
+      if (requestId === refreshRequestRef.current) setLoading(false);
     }
   }, [applyMappedData]);
 
@@ -365,7 +353,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       temporaryPassword = created.temporary_password;
       emailSent = Boolean(created.email_sent);
       emailError = created.email_error;
-      void refreshData({ silent: true });
+      void refreshData();
     }
     setStudents((prev) => {
       const id = nextStudentId(prev);
@@ -415,23 +403,18 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         return next;
       }),
     );
-    syncAfter({ type: "updateStudent", id, patch });
-  }, [courses]);
+    syncAfter({ type: "updateStudent", id, patch }, refreshData);
+  }, [refreshData, courses]);
 
   const deactivateStudent = useCallback((id: string) => {
     setStudents((prev) => prev.map((s) => (s.id === id ? { ...s, status: "Deactivated" as const } : s)));
-    syncAfter({ type: "deactivateStudent", id });
-  }, []);
-
-  const reactivateStudent = useCallback((id: string) => {
-    setStudents((prev) => prev.map((s) => (s.id === id ? { ...s, status: "Active" as const } : s)));
-    syncAfter({ type: "reactivateStudent", id });
-  }, []);
+    syncAfter({ type: "deactivateStudent", id }, refreshData);
+  }, [refreshData]);
 
   const deleteStudent = useCallback((id: string) => {
     setStudents((prev) => prev.filter((s) => s.id !== id));
-    syncAfter({ type: "deleteStudent", id });
-  }, []);
+    syncAfter({ type: "deleteStudent", id }, refreshData);
+  }, [refreshData]);
 
   const importStudents = useCallback((rows: string[][]) => {
     const data = rows.slice(1).filter((r) => r[1]);
@@ -487,7 +470,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       temporaryPassword = created.temporary_password;
       emailSent = Boolean(created.email_sent);
       emailError = created.email_error;
-      void refreshData({ silent: true });
+      void refreshData();
     }
     setTeachers((prev) => [
       {
@@ -505,10 +488,6 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const updateTeacher = useCallback((name: string, patch: Partial<Teacher>) => {
     setTeachers((prev) => prev.map((t) => (t.name === name ? { ...t, ...patch } : t)));
-  }, []);
-
-  const removeTeacher = useCallback((uuid: string) => {
-    setTeachers((prev) => prev.filter((t) => String(t._uuid) !== uuid));
   }, []);
 
   const assignCoursesToTeacher = useCallback(async (teacherName: string, courseTitles: string[]) => {
@@ -551,10 +530,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     );
     if (!res.data) {
       console.error("[dashboard] assignCoursesToTeacher failed", res.error);
-      await refreshData({ silent: true });
+      await refreshData();
       return false;
     }
-    // Optimistic UI already applied — no full-bundle refresh
+    await refreshData();
     return true;
   }, [teachers, courses, refreshData]);
 
@@ -596,9 +575,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       });
       if (!res.data) ok = false;
     }
-    // Optimistic UI already applied — skip full-bundle refresh
+    await refreshData();
     return ok;
-  }, [teachers, batches]);
+  }, [teachers, batches, refreshData]);
 
   const importTeachers = useCallback((rows: string[][]) => {
     const data = rows.slice(1).filter((r) => r[0]);
@@ -619,13 +598,6 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     });
     return data.length;
   }, []);
-
-  const replaceCourseCategories = useCallback(
-    (cats: { id: string; name: string; slug: string }[]) => {
-      setCourseCategories(cats);
-    },
-    [],
-  );
 
   const addCourse = useCallback(async (c: Parameters<DashboardData["addCourse"]>[0]) => {
     const slug = c.slug || slugify(c.title);
@@ -710,7 +682,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           );
         }
       }
-      await refreshData({ silent: true });
+      await refreshData();
       return true;
     }
     return false;
@@ -729,14 +701,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  const removeCourse = useCallback((slug: string) => {
-    setCourses((prev) => prev.filter((c) => c.slug !== slug));
-  }, []);
-
   const updateCourse = useCallback((slug: string, patch: Partial<Course>) => {
     updateCourseLocal(slug, patch);
-    syncAfter({ type: "updateCourse", slug, patch });
-  }, [updateCourseLocal]);
+    syncAfter({ type: "updateCourse", slug, patch }, refreshData);
+  }, [refreshData, updateCourseLocal]);
 
   const publishCourse = useCallback((slug: string, publish = true) => {
     setCourses((prev) =>
@@ -744,8 +712,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     );
     syncAfter(
       publish ? { type: "publishCourse", slug } : { type: "unpublishCourse", slug },
+      refreshData,
     );
-  }, []);
+  }, [refreshData]);
 
   const importCourses = useCallback((rows: string[][]) => {
     const data = rows.slice(1).filter((r) => r[1]);
@@ -795,17 +764,17 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       },
     });
     if (created) {
-      await refreshData({ silent: true });
+      await refreshData();
       return true;
     }
-    await refreshData({ silent: true });
+    await refreshData();
     return false;
   }, [refreshData]);
 
   const updateBatch = useCallback((id: string, patch: Partial<Batch>) => {
     setBatches((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
-    syncAfter({ type: "updateBatch", id, patch });
-  }, []);
+    syncAfter({ type: "updateBatch", id, patch }, refreshData);
+  }, [refreshData]);
 
   const importBatches = useCallback((rows: string[][]) => {
     const data = rows.slice(1).filter((r) => r[0]);
@@ -873,13 +842,14 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         portalOpen: Boolean(assignment.portalOpen),
         studentId: assignStudentId,
       },
+      refreshData,
     );
-  }, []);
+  }, [refreshData]);
 
   const updateAssignment = useCallback((title: string, patch: Partial<Assignment>) => {
     setAssignments((prev) => prev.map((a) => (a.title === title ? { ...a, ...patch } : a)));
-    syncAfter({ type: "updateAssignment", title, patch });
-  }, []);
+    syncAfter({ type: "updateAssignment", title, patch }, refreshData);
+  }, [refreshData]);
 
   useEffect(() => {
     const closeExpired = () => {
@@ -1003,18 +973,19 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         assignedBy: task.assignedBy || task.createdByName,
         createdByRole: task.createdByRole,
       },
+      refreshData,
     );
-  }, []);
+  }, [refreshData]);
 
   const updateTask = useCallback((id: string, patch: Partial<BoardTask>) => {
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
-    syncAfter({ type: "updateTask", id, patch });
-  }, []);
+    syncAfter({ type: "updateTask", id, patch }, refreshData);
+  }, [refreshData]);
 
   const deleteTask = useCallback((id: string) => {
     setTasks((prev) => prev.filter((t) => t.id !== id));
-    syncAfter({ type: "deleteTask", id });
-  }, []);
+    syncAfter({ type: "deleteTask", id }, refreshData);
+  }, [refreshData]);
 
   const advanceTaskStatus = useCallback((id: string) => {
     let advanced = false;
@@ -1027,9 +998,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       const next = TASK_STATUSES[idx + 1];
       return prev.map((t) => (t.id === id ? { ...t, status: next } : t));
     });
-    if (advanced) syncAfter({ type: "advanceTask", id });
+    if (advanced) syncAfter({ type: "advanceTask", id }, refreshData);
     return advanced;
-  }, []);
+  }, [refreshData]);
 
   const assignTasksToStudents = useCallback(
     (input: {
@@ -1076,10 +1047,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           studentIds: input.batchIds?.length ? undefined : targetIds,
           assignedBy: input.assignedBy || input.createdByName,
         },
+        refreshData,
       );
       return targetIds.length;
     },
-    [students],
+    [refreshData, students],
   );
 
   const importTasks = useCallback((rows: string[][]) => {
@@ -1128,8 +1100,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     setSubmissions((prev) =>
       prev.map((s) => (s.id === id ? { ...s, score, feedback, status: "reviewed" as const } : s)),
     );
-    syncAfter({ type: "reviewSubmission", id, score, feedback });
-  }, []);
+    syncAfter({ type: "reviewSubmission", id, score, feedback }, refreshData);
+  }, [refreshData]);
 
   const updateHomepage = useCallback((patch: Partial<HomepageContent>) => {
     setHomepage((prev) => ({ ...prev, ...patch }));
@@ -1193,8 +1165,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const updateSeoPage = useCallback((path: string, patch: Partial<SeoPage>) => {
     setSeoPages((prev) => prev.map((p) => (p.path === path ? { ...p, ...patch } : p)));
-    syncAfter({ type: "updateSeo", path, patch });
-  }, []);
+    syncAfter({ type: "updateSeo", path, patch }, refreshData);
+  }, [refreshData]);
 
   const taskBoard = useMemo<TaskBoard>(() => {
     const board: TaskBoard = {
@@ -1216,7 +1188,6 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       teachers,
       courses,
       courseCategories,
-      replaceCourseCategories,
       batches,
       shifts,
       assignments,
@@ -1233,12 +1204,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       addStudent,
       updateStudent,
       deactivateStudent,
-      reactivateStudent,
       deleteStudent,
       importStudents,
       addTeacher,
       updateTeacher,
-      removeTeacher,
       assignCourseToTeacher,
       assignCoursesToTeacher,
       assignBatchesToTeacher,
@@ -1246,7 +1215,6 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       addCourse,
       updateCourse,
       updateCourseLocal,
-      removeCourse,
       publishCourse,
       importCourses,
       addBatch,
@@ -1286,10 +1254,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       students, teachers, courses, courseCategories, batches, shifts, assignments, certificates, tasks, taskBoard, submissions,
       blog, events, testimonials, faqs, seoPages, homepage, partResources,
       dataSource, loading, refreshData,
-      replaceCourseCategories,
-      addStudent, updateStudent, deactivateStudent, reactivateStudent, deleteStudent, importStudents,
-      addTeacher, updateTeacher, removeTeacher, assignCourseToTeacher, assignCoursesToTeacher, assignBatchesToTeacher, importTeachers,
-      addCourse, updateCourse, updateCourseLocal, removeCourse, publishCourse, importCourses,
+      addStudent, updateStudent, deactivateStudent, deleteStudent, importStudents,
+      addTeacher, updateTeacher, assignCourseToTeacher, assignCoursesToTeacher, assignBatchesToTeacher, importTeachers,
+      addCourse, updateCourse, updateCourseLocal, publishCourse, importCourses,
       addBatch, updateBatch, importBatches,
       addShift, updateShift, importShifts,
       addAssignment, updateAssignment, importAssignments,

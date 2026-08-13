@@ -29,8 +29,10 @@ export function DateTimePickerField({
         </div>
       </div>
       <div>
-        <Label>{timeLabel}</Label>
+        <Label htmlFor="datetime-time">{timeLabel}</Label>
         <Input
+          id="datetime-time"
+          name="time"
           className="mt-1.5"
           type="time"
           value={time}

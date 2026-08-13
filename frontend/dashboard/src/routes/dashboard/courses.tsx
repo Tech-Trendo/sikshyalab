@@ -76,9 +76,8 @@ function CoursesDash() {
     courseCategories,
     addCourse,
     updateCourse,
-    updateCourseLocal,
-    removeCourse,
     importCourses,
+    refreshData,
   } = useDashboardData();
   const { myCourses: teacherCourses } = useTeacherScope();
   const { myCourses: studentCourses, paid } = useStudentScope();
@@ -160,7 +159,7 @@ function CoursesDash() {
       const res = await apiMutateDetailed(courseEndpoints.detail(c.slug), "DELETE");
       if (res.status >= 200 && res.status < 300) {
         toast.success(`Deleted ${c.title}`);
-        removeCourse(c.slug);
+        void refreshData();
       } else {
         toast.error(res.error || "Could not delete course");
       }
@@ -204,8 +203,7 @@ function CoursesDash() {
         if (uploaded) {
           // Cache-bust so the new file replaces any prior thumbnail in the UI
           const bust = `${uploaded}${uploaded.includes("?") ? "&" : "?"}v=${Date.now()}`;
-          // Thumbnail already persisted by upload endpoint — local state only
-          updateCourseLocal(editing.slug, { cover: bust });
+          updateCourse(editing.slug, { cover: bust });
         } else {
           toast.error("Course saved, but thumbnail upload failed");
         }

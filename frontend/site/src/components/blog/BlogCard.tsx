@@ -3,8 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { shouldUnoptimizeImageSrc } from "@/lib/env";
 import { cn } from "@/lib/utils";
+import { MediaImage } from "@/components/media/MediaImage";
+import { isDjangoMediaSrc } from "@/lib/env";
 
 export type BlogCardPost = {
   slug: string;
@@ -25,6 +26,7 @@ type Props = {
 
 export function BlogCard({ post, className, variant = "card" }: Props) {
   const detailHref = `/blog/${post.slug}`;
+  const Cover = isDjangoMediaSrc(post.cover) ? MediaImage : Image;
 
   const cardShell =
     variant === "flat"
@@ -40,12 +42,11 @@ export function BlogCard({ post, className, variant = "card" }: Props) {
             variant === "flat" && "rounded-[10px]",
           )}
         >
-          <Image
+          <Cover
             src={post.cover}
             alt={post.title}
             fill
             sizes="(max-width: 768px) 100vw, 33vw"
-            unoptimized={shouldUnoptimizeImageSrc(post.cover)}
             className="object-cover transition-transform duration-[400ms] ease-[cubic-bezier(0.215,0.61,0.355,1)] group-hover:scale-105"
           />
         </div>

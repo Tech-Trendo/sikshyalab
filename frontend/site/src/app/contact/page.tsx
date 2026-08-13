@@ -72,6 +72,9 @@ function ContactForm() {
         </Label>
         <Input
           id="contact-name"
+          name="name"
+          type="text"
+          autoComplete="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Your full name"
@@ -85,7 +88,9 @@ function ContactForm() {
         </Label>
         <Input
           id="contact-email"
+          name="email"
           type="email"
+          autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@example.com"
@@ -99,7 +104,9 @@ function ContactForm() {
         </Label>
         <Input
           id="contact-phone"
+          name="phone"
           type="tel"
+          autoComplete="tel"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder="+977 98XXXXXXXX"
@@ -113,6 +120,7 @@ function ContactForm() {
         </Label>
         <Textarea
           id="contact-message"
+          name="message"
           rows={6}
           value={message}
           onChange={(e) => setMessage(e.target.value)}

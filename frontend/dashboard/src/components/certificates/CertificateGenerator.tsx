@@ -187,6 +187,8 @@ export function CertificateGenerator({ data, logoUrl, className = "", showForm =
               </Label>
               <Input
                 id={`cert-${key}`}
+                name={key}
+                autoComplete="off"
                 className="mt-1 h-9"
                 value={String(data[key] ?? "")}
                 placeholder={placeholder}
@@ -206,6 +208,7 @@ export function CertificateGenerator({ data, logoUrl, className = "", showForm =
             </Label>
             <Input
               id="cert-signature"
+              name="signature"
               type="file"
               accept="image/png,image/jpeg,image/webp"
               className="mt-1 h-9 cursor-pointer"

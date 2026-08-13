@@ -82,6 +82,9 @@ export function EventRegistrationForm({
         </Label>
         <Input
           id={`${idPrefix}-name`}
+          name="name"
+          type="text"
+          autoComplete="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Your full name"
@@ -95,7 +98,9 @@ export function EventRegistrationForm({
         </Label>
         <Input
           id={`${idPrefix}-email`}
+          name="email"
           type="email"
+          autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@example.com"
@@ -109,7 +114,9 @@ export function EventRegistrationForm({
         </Label>
         <Input
           id={`${idPrefix}-phone`}
+          name="phone"
           type="tel"
+          autoComplete="tel"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder="+977 98XXXXXXXX"
@@ -123,6 +130,7 @@ export function EventRegistrationForm({
         </Label>
         <Textarea
           id={`${idPrefix}-message`}
+          name="message"
           rows={5}
           value={message}
           onChange={(e) => setMessage(e.target.value)}

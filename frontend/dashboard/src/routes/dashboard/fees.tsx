@@ -181,7 +181,7 @@ function StudentFees() {
 }
 
 function AdminFees() {
-  const { students, updateStudent } = useDashboardData();
+  const { students, updateStudent, refreshData } = useDashboardData();
   const { revenueSeries: revData, revenueSummary } = useAdminAnalytics();
   const [page, setPage] = useState(1);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
@@ -311,6 +311,7 @@ function AdminFees() {
     const feeId = (student as { _studentFeeId?: string })._studentFeeId;
     if (feeId) {
       syncAfter({ type: "createInvoice", studentFeeId: feeId, amount: amt }, async () => {
+        await refreshData();
         await loadInvoices();
       });
     }
@@ -353,6 +354,7 @@ function AdminFees() {
     updateStudent(student.id, {
       fees: { total: student.fees.total, paid, due: Math.max(0, student.fees.total - paid) },
     });
+    await refreshData();
     toast.success(
       `Payment of ${inr(amt)} recorded` +
         (payment.receipt_number ? ` · Receipt ${payment.receipt_number}` : ""),

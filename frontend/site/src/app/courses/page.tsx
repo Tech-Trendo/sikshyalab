@@ -69,10 +69,15 @@ function CoursesContent() {
           <RevealOnScroll variant="fade-up" delay={0.15}>
             <div className="mb-10 grid grid-cols-1 gap-3 rounded-brand-lg bg-white p-4 shadow-brand-soft sm:grid-cols-2 md:grid-cols-4 md:p-5">
               <Input
+                id="courses-search"
+                name="q"
+                type="search"
+                autoComplete="off"
                 placeholder="Search courses…"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 className="h-11 rounded-brand border-brand-border sm:col-span-2"
+                aria-label="Search courses"
               />
               <Select value={cat} onValueChange={setCat}>
                 <SelectTrigger className="h-11 rounded-brand border-brand-border">

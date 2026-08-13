@@ -68,6 +68,7 @@ function ForgotPasswordForm() {
           </Label>
           <Input
             id="identifier"
+            name="username"
             type="text"
             autoComplete="username"
             inputMode="email"

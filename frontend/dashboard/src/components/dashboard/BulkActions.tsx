@@ -45,6 +45,8 @@ export function BulkActions({
         <>
           <input
             ref={inputRef}
+            id="bulk-import-csv"
+            name="bulk_import_csv"
             type="file"
             accept=".csv,text/csv"
             className="hidden"

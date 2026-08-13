@@ -88,6 +88,7 @@ function VerifyOtpForm() {
             </Label>
             <Input
               id="otp"
+              name="otp"
               inputMode="numeric"
               autoComplete="one-time-code"
               maxLength={6}

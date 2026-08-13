@@ -123,6 +123,8 @@ export function MediaImagePicker({
       </div>
       <input
         ref={inputRef}
+        id="media-image-picker"
+        name="media_image"
         type="file"
         accept="image/*"
         className="hidden"

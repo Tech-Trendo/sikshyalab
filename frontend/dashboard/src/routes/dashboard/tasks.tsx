@@ -376,7 +376,10 @@ function TasksPage() {
                       {batches.map((b) => (
                         <label key={b.id} className="flex cursor-pointer items-center gap-2 text-sm">
                           <input
+                            id={`task-batch-${b.id}`}
+                            name="batchIds"
                             type="checkbox"
+                            value={b.id}
                             className="rounded border-border"
                             checked={form.batchIds.includes(b.id)}
                             onChange={(e) => {

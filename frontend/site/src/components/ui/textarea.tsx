@@ -3,7 +3,11 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 const Textarea = React.forwardRef<HTMLTextAreaElement, React.ComponentProps<"textarea">>(
-  ({ className, ...props }, ref) => {
+  ({ className, id, name, ...props }, ref) => {
+    const uid = React.useId();
+    const resolvedId = id ?? (name != null && name !== "" ? String(name) : uid);
+    const resolvedName = name ?? (id != null && id !== "" ? String(id) : uid);
+
     return (
       <textarea
         className={cn(
@@ -12,6 +16,8 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, React.ComponentProps<"tex
         )}
         ref={ref}
         {...props}
+        id={resolvedId}
+        name={resolvedName}
       />
     );
   },

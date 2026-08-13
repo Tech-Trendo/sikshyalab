@@ -95,6 +95,9 @@ export function EnrollDialog({ open, onOpenChange, courseTitle }: Props) {
             </Label>
             <Input
               id="enroll-name"
+              name="name"
+              type="text"
+              autoComplete="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Your full name"
@@ -108,7 +111,9 @@ export function EnrollDialog({ open, onOpenChange, courseTitle }: Props) {
             </Label>
             <Input
               id="enroll-email"
+              name="email"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
@@ -122,7 +127,9 @@ export function EnrollDialog({ open, onOpenChange, courseTitle }: Props) {
             </Label>
             <Input
               id="enroll-phone"
+              name="phone"
               type="tel"
+              autoComplete="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+977 98XXXXXXXX"
@@ -136,6 +143,7 @@ export function EnrollDialog({ open, onOpenChange, courseTitle }: Props) {
             </Label>
             <Textarea
               id="enroll-message"
+              name="message"
               rows={5}
               value={message}
               onChange={(e) => setMessage(e.target.value)}

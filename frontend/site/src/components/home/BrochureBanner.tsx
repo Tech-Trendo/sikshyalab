@@ -83,7 +83,9 @@ export function VerifyCertificateBanner() {
               </label>
               <input
                 id="home-verify-code"
+                name="certificate_code"
                 type="text"
+                autoComplete="off"
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 placeholder=""

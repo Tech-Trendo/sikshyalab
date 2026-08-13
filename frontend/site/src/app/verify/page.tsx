@@ -134,7 +134,9 @@ function VerifyInner() {
                 </label>
                 <input
                   id="verify-code"
+                  name="certificate_code"
                   type="text"
+                  autoComplete="off"
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   placeholder=""

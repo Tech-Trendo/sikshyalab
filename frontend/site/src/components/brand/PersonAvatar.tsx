@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
-import { shouldUnoptimizeImageSrc } from "@/lib/env";
 import { cn } from "@/lib/utils";
+import { MediaImage } from "@/components/media/MediaImage";
+import { resolveMediaUrl } from "@/lib/env";
 
 export function initialsFromName(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -29,18 +29,17 @@ export function PersonAvatar({
   fallbackClassName,
 }: PersonAvatarProps) {
   const [failed, setFailed] = useState(false);
-  const url = typeof src === "string" ? src.trim() : "";
+  const url = resolveMediaUrl(typeof src === "string" ? src.trim() : "") || "";
   const showImage = Boolean(url) && !failed;
 
   if (showImage) {
     return (
-      <Image
+      <MediaImage
         src={url}
         alt={name}
         width={size}
         height={size}
         className={cn("shrink-0 rounded-full object-cover", className)}
-        unoptimized={shouldUnoptimizeImageSrc(url)}
         onError={() => setFailed(true)}
       />
     );

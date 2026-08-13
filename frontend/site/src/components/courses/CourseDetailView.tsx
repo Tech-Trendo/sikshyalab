@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -24,11 +23,12 @@ import { PrimaryButton } from "@/components/brand/Buttons";
 import { EnrollDialog } from "@/components/courses/EnrollDialog";
 import { EventCard } from "@/components/events/EventCard";
 import { EventRegisterDialog } from "@/components/events/EventRegisterDialog";
+import { MediaImage } from "@/components/media/MediaImage";
 import { SectionContainer } from "@/components/brand/Section";
 import RevealOnScroll, { STAGGER_STEP } from "@/components/motion/RevealOnScroll";
 import { courseToCardProps } from "@/lib/course-card";
 import { fetchPublicEventsByCourse, fetchPublicGalleryByCourse } from "@/lib/public-api";
-import { resolveMediaUrl, shouldUnoptimizeImageSrc } from "@/lib/env";
+import { resolveMediaUrl } from "@/lib/env";
 import { inr, type Course } from "@/lib/mock";
 import { cn } from "@/lib/utils";
 
@@ -522,12 +522,11 @@ export function CourseDetailView({
           <RevealOnScroll variant="fade-up" delay={0.3} className="lg:self-start">
             <aside className="sticky top-24 rounded-brand-lg bg-white p-6 shadow-brand-soft transition-shadow duration-300 hover:shadow-brand-med">
               <div className="relative mb-5 aspect-[16/9] overflow-hidden rounded-xl bg-[#E8EEF6]">
-                <Image
+                <MediaImage
                   key={course.cover || "placeholder"}
                   src={course.cover || "/images/theme/course-placeholder.svg"}
                   alt={course.cover ? course.title : `${course.title} — no image`}
                   fill
-                  unoptimized={shouldUnoptimizeImageSrc(course.cover || "/images/theme/course-placeholder.svg")}
                   className="object-cover transition-transform duration-500 hover:scale-105"
                   sizes="(max-width: 1024px) 100vw, 380px"
                 />

@@ -11,7 +11,7 @@ function readEnv(name: string): string | undefined {
   return v?.trim() || undefined;
 }
 
-/** Django machine origin, e.g. http://192.168.100.154:8000 */
+/** Django machine origin, e.g. http://192.168.100.154:8000 or http://localhost:8000 */
 export function djangoOrigin(): string {
   const explicit = readEnv("NEXT_PUBLIC_DJANGO_ORIGIN") || readEnv("API_PROXY_TARGET");
   if (explicit) {
@@ -30,8 +30,10 @@ export function djangoOrigin(): string {
     if (hostname !== "localhost" && hostname !== "127.0.0.1") {
       return `${protocol}//${hostname}:8000`;
     }
+    // Prefer localhost to match Next remotePatterns + browser URL bar
+    return `${protocol}//localhost:8000`;
   }
-  return "http://127.0.0.1:8000";
+  return "http://localhost:8000";
 }
 
 /** Ensure any configured base ends with /api/v1 (never bare /api). */
@@ -100,7 +102,6 @@ export function getDashboardUrl(): string {
     const { protocol, hostname } = window.location;
     const isLocal = hostname === "localhost" || hostname === "127.0.0.1";
 
-    // Explicit LAN host wins when page is opened on that host or env forces it
     if (lanHost && (hostname === lanHost || readEnv("NEXT_PUBLIC_FORCE_LAN") === "1")) {
       return `${protocol}//${lanHost}:5173`;
     }
@@ -132,29 +133,73 @@ export function getSiteUrl(): string {
   return "http://localhost:8081";
 }
 
-/** Django fallback when a media file is missing on disk/S3 — not a real asset. */
-const DJANGO_MISSING_PLACEHOLDER = /\/cms\/placeholders\/missing\.png(?:$|\?)/i;
+/** True when URL points at Django/S3 media (must not go through /_next/image as a relative path). */
+export function isDjangoMediaSrc(url?: string | null): boolean {
+  if (!url) return false;
+  const u = String(url).trim();
+  if (!u) return false;
+  if (u.startsWith("/media/")) return true;
+  try {
+    const parsed = new URL(u);
+    return parsed.pathname.startsWith("/media/");
+  } catch {
+    return u.includes("/media/");
+  }
+}
 
-function isLocalOrLanHostname(hostname: string): boolean {
-  return (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "0.0.0.0" ||
-    hostname.endsWith(".local") ||
-    /^192\.168\.\d+\.\d+$/.test(hostname) ||
-    /^10\.\d+\.\d+\.\d+$/.test(hostname)
-  );
+/** Known media key prefixes (relative to Django FileField.name / AWS_LOCATION). */
+const MEDIA_KEY_PREFIXES = [
+  "cms/",
+  "courses/",
+  "seo/",
+  "certificates/",
+  "avatars/",
+  "profile_images/",
+  "content/",
+  "enrollments/",
+  "assignments/",
+  "students/",
+  "teachers/",
+  "receipts/",
+];
+
+/**
+ * Rewrite a signed/public S3 object URL back to Django `/media/<key>` so the
+ * gateway can issue a fresh redirect. Mutating signed query strings breaks SigV4.
+ */
+function s3ObjectUrlToMediaPath(absoluteUrl: string): string | null {
+  try {
+    const parsed = new URL(absoluteUrl);
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    if (!segments.length) return null;
+
+    const isSigned = [...parsed.searchParams.keys()].some((k) =>
+      k.startsWith("X-Amz-"),
+    );
+    const looksLikeObjectStore =
+      isSigned ||
+      /s3|datahub|amazonaws|minio|digitaloceanspaces/i.test(parsed.hostname);
+
+    if (!looksLikeObjectStore) return null;
+
+    for (let i = 0; i < segments.length; i++) {
+      const rest = segments.slice(i).join("/");
+      if (MEDIA_KEY_PREFIXES.some((p) => rest.startsWith(p))) {
+        return `/media/${rest}`;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
 }
 
 /**
- * Turn Django media URLs into loadable absolute URLs.
+ * Turn Django media paths into absolute Django URLs.
  *
- * Important: next/image resolves relative `/media/...` against `public/` and does
- * NOT follow Next rewrites. Proxied `/media` works for plain <img>, but
- * `/_next/image?url=/media/...` returns 400. Always return an absolute Django
- * origin URL so the optimizer (and remotePatterns) can fetch the file.
- *
- * External CDN/S3 hosts are left unchanged.
+ * Always use `http(s)://<django-host>:8000/media/...` so next/image never
+ * receives a relative `/media/...` (that produces
+ * `/_next/image?url=%2Fmedia%2F...` → 400).
  */
 export function resolveMediaUrl(url?: string | null): string | null {
   if (!url) return null;
@@ -162,28 +207,30 @@ export function resolveMediaUrl(url?: string | null): string | null {
   if (!trimmed) return null;
   if (trimmed.startsWith("blob:") || trimmed.startsWith("data:")) return trimmed;
 
-  if (!trimmed.startsWith("/")) {
+  let path = trimmed;
+  if (trimmed.startsWith("/")) {
+    path = trimmed;
+  } else {
     try {
       const parsed = new URL(trimmed);
-      if (!parsed.pathname.startsWith("/media/")) return trimmed;
-      if (DJANGO_MISSING_PLACEHOLDER.test(parsed.pathname)) return null;
-      // S3 / CloudFront / public CDN — do not rewrite to Django
-      if (!isLocalOrLanHostname(parsed.hostname)) return trimmed;
-      return `${djangoOrigin()}${parsed.pathname}${parsed.search}`;
+      if (!parsed.pathname.startsWith("/media/")) {
+        const fromS3 = s3ObjectUrlToMediaPath(trimmed);
+        if (fromS3) {
+          path = fromS3;
+        } else {
+          return trimmed;
+        }
+      } else {
+        path = `${parsed.pathname}${parsed.search}`;
+      }
     } catch {
       return trimmed;
     }
   }
 
-  if (!trimmed.startsWith("/media/")) return trimmed;
-  if (DJANGO_MISSING_PLACEHOLDER.test(trimmed)) return null;
+  if (!path.startsWith("/media/")) return trimmed;
 
-  return `${djangoOrigin()}${trimmed}`;
-}
-
-/** True when next/image should skip optimization (proxied media, remote, SVG). */
-export function shouldUnoptimizeImageSrc(src: string): boolean {
-  return /^https?:\/\//i.test(src) || /(?:^|\/)media\//.test(src) || /\.svg(?:$|\?)/i.test(src);
+  return `${djangoOrigin()}${path}`;
 }
 
 export { apiBase, normalizeApiBase };

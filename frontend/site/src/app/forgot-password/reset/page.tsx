@@ -77,6 +77,7 @@ function ResetForm() {
             <div className="relative">
               <Input
                 id="password"
+                name="password"
                 type={show ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -114,6 +115,7 @@ function ResetForm() {
             </Label>
             <Input
               id="confirm"
+              name="confirm_password"
               type={show ? "text" : "password"}
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}

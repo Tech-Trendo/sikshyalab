@@ -76,7 +76,9 @@ function ChangePasswordPage() {
               </Label>
               <Input
                 id="old"
+                name="old_password"
                 type="password"
+                autoComplete="current-password"
                 value={oldPassword}
                 onChange={(e) => setOldPassword(e.target.value)}
               />
@@ -85,7 +87,9 @@ function ChangePasswordPage() {
               <Label htmlFor="password">New password</Label>
               <Input
                 id="password"
+                name="password"
                 type="password"
+                autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -95,7 +99,9 @@ function ChangePasswordPage() {
               <Label htmlFor="confirm">Confirm new password</Label>
               <Input
                 id="confirm"
+                name="confirm_password"
                 type="password"
+                autoComplete="new-password"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 required

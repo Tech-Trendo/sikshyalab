@@ -132,12 +132,16 @@ export function Footer() {
               </p>
               <form className="sl-footer__form" onSubmit={(e) => void onSubscribe(e)}>
                 <input
+                  id="footer-newsletter-email"
+                  name="email"
                   type="email"
+                  autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Your email"
                   required
                   className="sl-footer__input"
+                  aria-label="Email for newsletter"
                 />
                 <button type="submit" className="sl-footer__subscribe" disabled={submitting}>
                   {submitting ? "…" : "Subscribe"}

@@ -1,9 +1,13 @@
 import * as React from "react";
 
-import { cn } from "../../lib/utils";
+import { cn } from "@/lib/utils";
 
 const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
-  ({ className, type, ...props }, ref) => {
+  ({ className, type, id, name, ...props }, ref) => {
+    const uid = React.useId();
+    const resolvedId = id ?? (name != null && name !== "" ? String(name) : uid);
+    const resolvedName = name ?? (id != null && id !== "" ? String(id) : uid);
+
     return (
       <input
         type={type}
@@ -13,6 +17,8 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
         )}
         ref={ref}
         {...props}
+        id={resolvedId}
+        name={resolvedName}
       />
     );
   },

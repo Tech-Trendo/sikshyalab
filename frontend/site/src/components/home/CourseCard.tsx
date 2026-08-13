@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import {
   BookOpen,
@@ -16,7 +15,8 @@ import {
   isStockCourseCover,
 } from "@/lib/course-media";
 import { inr } from "@/lib/currency";
-import { shouldUnoptimizeImageSrc } from "@/lib/env";
+import { MediaImage } from "@/components/media/MediaImage";
+import { isDjangoMediaSrc, resolveMediaUrl } from "@/lib/env";
 
 export interface CourseCardProps {
   /** Resolved thumbnail URL; empty/null shows the explicit placeholder. */
@@ -75,8 +75,10 @@ export function CourseCard({
   const detailHref = slug ? `/courses/${slug}` : "/courses";
 
   const hasRealImage = Boolean(imageUrl) && !isStockCourseCover(imageUrl);
-  const src = hasRealImage ? imageUrl! : COURSE_THUMBNAIL_PLACEHOLDER;
-  const unoptimized = shouldUnoptimizeImageSrc(src);
+  const rawSrc = hasRealImage ? imageUrl! : COURSE_THUMBNAIL_PLACEHOLDER;
+  const src = resolveMediaUrl(rawSrc) || rawSrc;
+  const unoptimized =
+    isDjangoMediaSrc(src) || /^https?:\/\//i.test(src) || src.endsWith(".svg");
 
   return (
     <article
@@ -89,7 +91,7 @@ export function CourseCard({
       )}
     >
       <div className="relative aspect-[16/9] w-full shrink-0 overflow-hidden rounded-t-[10px] bg-[#E8EEF6]">
-        <Image
+        <MediaImage
           key={src}
           src={src}
           alt={hasRealImage ? title : `${title} — no image`}

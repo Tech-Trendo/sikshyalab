@@ -110,7 +110,7 @@ function StudentCertificates({ logoUrl }: { logoUrl: string | null }) {
 }
 
 function AdminCertificates({ logoUrl }: { logoUrl: string | null }) {
-  const { certificates, students, courses, addCertificate } = useDashboardData();
+  const { certificates, students, courses, refreshData } = useDashboardData();
   const [page, setPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -205,15 +205,7 @@ function AdminCertificates({ logoUrl }: { logoUrl: string | null }) {
         result.data.certificate_number ||
         result.data.verification_code ||
         formData.certificateNumber;
-      addCertificate({
-        code: issuedCode,
-        student: student.name,
-        course: courseTitle,
-        issued:
-          (result.data.issue_date || "").slice(0, 10) ||
-          new Date().toISOString().slice(0, 10),
-        status: "Valid",
-      });
+      await refreshData();
       toast.success(`Issued ${issuedCode} to ${student.name}`, {
         description: "This number can now be verified on the public verify page.",
       });
