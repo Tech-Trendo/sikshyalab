@@ -16,6 +16,7 @@ import {
   isStockCourseCover,
 } from "@/lib/course-media";
 import { inr } from "@/lib/currency";
+import { shouldUnoptimizeImageSrc } from "@/lib/env";
 
 export interface CourseCardProps {
   /** Resolved thumbnail URL; empty/null shows the explicit placeholder. */
@@ -75,10 +76,7 @@ export function CourseCard({
 
   const hasRealImage = Boolean(imageUrl) && !isStockCourseCover(imageUrl);
   const src = hasRealImage ? imageUrl! : COURSE_THUMBNAIL_PLACEHOLDER;
-  // Remote Django media often needs unoptimized; local public assets work either way.
-  const isRemote = /^https?:\/\//i.test(src);
-  const unoptimized =
-    isRemote || src.startsWith("/media/") || src.endsWith(".svg");
+  const unoptimized = shouldUnoptimizeImageSrc(src);
 
   return (
     <article

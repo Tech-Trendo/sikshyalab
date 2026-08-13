@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import Image from "next/image";
 import { ArrowLeft, ArrowRight, Star } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
+import { shouldUnoptimizeImageSrc } from "@/lib/env";
 import {
   Section,
   SectionContainer,
@@ -90,6 +91,7 @@ function TestimonialCard({ t }: { t: CardItem }) {
             width={48}
             height={48}
             className="h-12 w-12 shrink-0 rounded-full object-cover"
+            unoptimized={shouldUnoptimizeImageSrc(t.avatar)}
           />
         ) : (
           <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-brand-navy text-sm font-bold text-white">

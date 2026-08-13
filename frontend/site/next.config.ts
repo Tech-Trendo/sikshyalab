@@ -24,6 +24,8 @@ const nextConfig: NextConfig = {
   // Prevent Next from 308-stripping trailing slashes on API routes.
   skipTrailingSlashRedirect: true,
   images: {
+    // Relative `/media/...` is NOT allowed here — next/image reads local `public/`
+    // only and ignores rewrites. resolveMediaUrl() always emits absolute Django URLs.
     remotePatterns: [
       { protocol: "https", hostname: "images.unsplash.com" },
       { protocol: "https", hostname: "i.pravatar.cc" },

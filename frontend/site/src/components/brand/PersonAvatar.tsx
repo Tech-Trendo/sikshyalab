@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import { shouldUnoptimizeImageSrc } from "@/lib/env";
 import { cn } from "@/lib/utils";
 
 export function initialsFromName(name: string) {
@@ -39,6 +40,7 @@ export function PersonAvatar({
         width={size}
         height={size}
         className={cn("shrink-0 rounded-full object-cover", className)}
+        unoptimized={shouldUnoptimizeImageSrc(url)}
         onError={() => setFailed(true)}
       />
     );

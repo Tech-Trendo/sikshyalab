@@ -32,7 +32,7 @@ const csvHeaders = ["name", "role", "email", "exp", "courses"];
 const emptyForm = { name: "", role: "", email: "", exp: "", bio: "" };
 
 function TeachersPage() {
-  const { teachers, courses, batches, addTeacher, assignCoursesToTeacher, assignBatchesToTeacher, importTeachers, refreshData } = useDashboardData();
+  const { teachers, courses, batches, addTeacher, updateTeacher, removeTeacher, assignCoursesToTeacher, assignBatchesToTeacher, importTeachers } = useDashboardData();
   const { isAdmin } = useAuth();
   const { data: reviews = [] } = useReviewsQuery();
   const [page, setPage] = useState(1);
@@ -78,7 +78,7 @@ function TeachersPage() {
       const res = await apiMutateDetailed(`/teachers/profiles/${encodeURIComponent(String(t._uuid))}/`, "DELETE");
       if (res.status >= 200 && res.status < 300) {
         toast.success(`${t.name} deleted`);
-        void refreshData();
+        removeTeacher(String(t._uuid));
       } else {
         toast.error(res.error || "Could not delete teacher");
       }
@@ -122,11 +122,15 @@ function TeachersPage() {
         );
 
         if (res.status >= 200 && res.status < 300) {
+          updateTeacher(editingTeacher.name, {
+            role: form.role.trim(),
+            bio: form.bio || "",
+            exp: years ? `${years} yr${years === 1 ? "" : "s"}` : form.exp,
+          });
           toast.success(`${editingTeacher.name} updated`);
           setFormOpen(false);
           setEditingTeacher(null);
           setForm(emptyForm);
-          await refreshData();
         } else {
           toast.error(res.error || "Could not update teacher");
         }

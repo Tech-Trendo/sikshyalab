@@ -13,7 +13,7 @@ export default function ChapterVideoEditor({ courseSlug, chapterIdx, chapter }: 
   chapterIdx: number;
   chapter: any;
 }) {
-  const { updateCourse, courses } = useDashboardData() as any;
+  const { updateCourseLocal, courses } = useDashboardData();
   const existingVideo = chapter?.video || null;
   const [videoUrl, setVideoUrl] = useState(existingVideo?.url || "");
   const [parts, setParts] = useState<Part[]>(existingVideo?.parts?.slice() || []);
@@ -53,7 +53,7 @@ export default function ChapterVideoEditor({ courseSlug, chapterIdx, chapter }: 
       const nextChapters = course.chapters.map((ch: any, i: number) =>
         i === chapterIdx ? { ...ch, video: { url: videoUrl.trim(), parts } } : ch,
       );
-      updateCourse(courseSlug, { chapters: nextChapters });
+      updateCourseLocal(courseSlug, { chapters: nextChapters });
       toast.success("Chapter video updated locally — backend persistence requires API support.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not save");

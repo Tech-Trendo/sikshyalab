@@ -32,7 +32,7 @@ const emptyForm = {
 };
 
 function CategoriesPage() {
-  const { courseCategories, courses, refreshData } = useDashboardData();
+  const { courses, replaceCourseCategories } = useDashboardData();
   const [page, setPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ApiCategoryRow | null>(null);
@@ -46,6 +46,9 @@ function CategoriesPage() {
     try {
       const list = await apiList<ApiCategoryRow>(courseEndpoints.categories());
       setRows(list);
+      replaceCourseCategories(
+        list.map((c) => ({ id: String(c.id), name: c.name, slug: c.slug })),
+      );
     } finally {
       setLoading(false);
     }
@@ -53,7 +56,7 @@ function CategoriesPage() {
 
   useEffect(() => {
     void load();
-  }, [courseCategories]);
+  }, []);
 
   const paged = paginate(rows, page);
   const activeCount = rows.filter((r) => r.is_active !== false).length;
@@ -94,7 +97,6 @@ function CategoriesPage() {
           toast.success(`Updated ${form.name}`);
           setFormOpen(false);
           await load();
-          void refreshData();
         } else {
           toast.error(res.error || "Could not update category");
         }
@@ -104,7 +106,6 @@ function CategoriesPage() {
           toast.success(`Created ${form.name}`);
           setFormOpen(false);
           await load();
-          void refreshData();
         } else {
           toast.error("Could not create category");
         }
@@ -120,7 +121,6 @@ function CategoriesPage() {
     if (res.status >= 200 && res.status < 300) {
       toast.success(`Deleted ${row.name}`);
       await load();
-      void refreshData();
     } else {
       toast.error(res.error || "Could not delete category");
     }

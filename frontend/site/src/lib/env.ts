@@ -132,10 +132,29 @@ export function getSiteUrl(): string {
   return "http://localhost:8081";
 }
 
+/** Django fallback when a media file is missing on disk/S3 — not a real asset. */
+const DJANGO_MISSING_PLACEHOLDER = /\/cms\/placeholders\/missing\.png(?:$|\?)/i;
+
+function isLocalOrLanHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0" ||
+    hostname.endsWith(".local") ||
+    /^192\.168\.\d+\.\d+$/.test(hostname) ||
+    /^10\.\d+\.\d+\.\d+$/.test(hostname)
+  );
+}
+
 /**
- * Turn Django absolute media URLs into loadable URLs on any device.
- * - Relative API (/api/v1 via Next proxy) → same-origin /media/...
- * - Absolute API (http://<django-ip>:8000/api/v1) → http://<django-ip>:8000/media/...
+ * Turn Django media URLs into loadable absolute URLs.
+ *
+ * Important: next/image resolves relative `/media/...` against `public/` and does
+ * NOT follow Next rewrites. Proxied `/media` works for plain <img>, but
+ * `/_next/image?url=/media/...` returns 400. Always return an absolute Django
+ * origin URL so the optimizer (and remotePatterns) can fetch the file.
+ *
+ * External CDN/S3 hosts are left unchanged.
  */
 export function resolveMediaUrl(url?: string | null): string | null {
   if (!url) return null;
@@ -143,28 +162,28 @@ export function resolveMediaUrl(url?: string | null): string | null {
   if (!trimmed) return null;
   if (trimmed.startsWith("blob:") || trimmed.startsWith("data:")) return trimmed;
 
-  let path = trimmed;
-  if (trimmed.startsWith("/")) {
-    path = trimmed;
-  } else {
+  if (!trimmed.startsWith("/")) {
     try {
       const parsed = new URL(trimmed);
       if (!parsed.pathname.startsWith("/media/")) return trimmed;
-      path = `${parsed.pathname}${parsed.search}`;
+      if (DJANGO_MISSING_PLACEHOLDER.test(parsed.pathname)) return null;
+      // S3 / CloudFront / public CDN — do not rewrite to Django
+      if (!isLocalOrLanHostname(parsed.hostname)) return trimmed;
+      return `${djangoOrigin()}${parsed.pathname}${parsed.search}`;
     } catch {
       return trimmed;
     }
   }
 
-  if (!path.startsWith("/media/")) return trimmed;
+  if (!trimmed.startsWith("/media/")) return trimmed;
+  if (DJANGO_MISSING_PLACEHOLDER.test(trimmed)) return null;
 
-  const api = readEnv("NEXT_PUBLIC_API_URL");
-  // Direct-to-Django mode (frontend on another device)
-  if (api?.startsWith("http")) {
-    return `${djangoOrigin()}${path}`;
-  }
-  // Same-origin Next/Vite /media proxy
-  return path;
+  return `${djangoOrigin()}${trimmed}`;
+}
+
+/** True when next/image should skip optimization (proxied media, remote, SVG). */
+export function shouldUnoptimizeImageSrc(src: string): boolean {
+  return /^https?:\/\//i.test(src) || /(?:^|\/)media\//.test(src) || /\.svg(?:$|\?)/i.test(src);
 }
 
 export { apiBase, normalizeApiBase };

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { shouldUnoptimizeImageSrc } from "@/lib/env";
 import { cn } from "@/lib/utils";
 
 export type BlogCardPost = {
@@ -44,6 +45,7 @@ export function BlogCard({ post, className, variant = "card" }: Props) {
             alt={post.title}
             fill
             sizes="(max-width: 768px) 100vw, 33vw"
+            unoptimized={shouldUnoptimizeImageSrc(post.cover)}
             className="object-cover transition-transform duration-[400ms] ease-[cubic-bezier(0.215,0.61,0.355,1)] group-hover:scale-105"
           />
         </div>

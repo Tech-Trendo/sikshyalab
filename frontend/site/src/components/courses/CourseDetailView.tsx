@@ -28,7 +28,7 @@ import { SectionContainer } from "@/components/brand/Section";
 import RevealOnScroll, { STAGGER_STEP } from "@/components/motion/RevealOnScroll";
 import { courseToCardProps } from "@/lib/course-card";
 import { fetchPublicEventsByCourse, fetchPublicGalleryByCourse } from "@/lib/public-api";
-import { resolveMediaUrl } from "@/lib/env";
+import { resolveMediaUrl, shouldUnoptimizeImageSrc } from "@/lib/env";
 import { inr, type Course } from "@/lib/mock";
 import { cn } from "@/lib/utils";
 
@@ -527,7 +527,7 @@ export function CourseDetailView({
                   src={course.cover || "/images/theme/course-placeholder.svg"}
                   alt={course.cover ? course.title : `${course.title} — no image`}
                   fill
-                  unoptimized={!course.cover || course.cover.startsWith("/media/") || /^https?:\/\//i.test(course.cover)}
+                  unoptimized={shouldUnoptimizeImageSrc(course.cover || "/images/theme/course-placeholder.svg")}
                   className="object-cover transition-transform duration-500 hover:scale-105"
                   sizes="(max-width: 1024px) 100vw, 380px"
                 />
