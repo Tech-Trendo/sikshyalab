@@ -1,100 +1,48 @@
-/**
- * Normalize Django media URLs for dashboard (localhost + LAN + remote FE).
- */
-function djangoOrigin(): string {
-  const fromEnv =
-    (typeof import.meta !== "undefined" &&
-      ((import.meta as any).env?.VITE_DJANGO_ORIGIN as string | undefined)) ||
-    "";
-  if (fromEnv.trim()) {
-    try {
-      const u = new URL(fromEnv.includes("://") ? fromEnv : `http://${fromEnv}`);
-      if (u.port === "8081" || u.port === "5173") {
-        return `${u.protocol}//${u.hostname}:8000`;
-      }
-      return u.origin;
-    } catch {
-      /* fall through */
-    }
-  }
-  if (typeof window !== "undefined") {
-    const { protocol, hostname } = window.location;
-    if (hostname !== "localhost" && hostname !== "127.0.0.1") {
-      return `${protocol}//${hostname}:8000`;
-    }
-  }
-  return "http://127.0.0.1:8000";
+import { resolveApiBase } from "./api-base";
+
+function isLoopbackHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0" ||
+    hostname === "[::1]"
+  );
 }
 
-const MEDIA_KEY_PREFIXES = [
-  "cms/",
-  "courses/",
-  "seo/",
-  "certificates/",
-  "avatars/",
-  "profile_images/",
-  "content/",
-  "enrollments/",
-  "assignments/",
-  "students/",
-  "teachers/",
-  "receipts/",
-];
-
-/** Rewrite signed S3 URLs to Django `/media/<key>` (do not mutate SigV4 query strings). */
-function s3ObjectUrlToMediaPath(absoluteUrl: string): string | null {
+/** Django origin from the same env var as API calls (`VITE_API_URL`). */
+export function djangoOrigin(): string {
+  const api = resolveApiBase();
   try {
-    const parsed = new URL(absoluteUrl);
-    const segments = parsed.pathname.split("/").filter(Boolean);
-    if (!segments.length) return null;
-    const isSigned = [...parsed.searchParams.keys()].some((k) =>
-      k.startsWith("X-Amz-"),
-    );
-    const looksLikeObjectStore =
-      isSigned ||
-      /s3|datahub|amazonaws|minio|digitaloceanspaces/i.test(parsed.hostname);
-    if (!looksLikeObjectStore) return null;
-    for (let i = 0; i < segments.length; i++) {
-      const rest = segments.slice(i).join("/");
-      if (MEDIA_KEY_PREFIXES.some((p) => rest.startsWith(p))) {
-        return `/media/${rest}`;
-      }
-    }
+    return new URL(api).origin;
   } catch {
-    /* ignore */
+    return "http://192.168.100.154:8000";
   }
-  return null;
 }
 
-export function resolveMediaUrl(url?: string | null): string {
-  if (!url) return "";
-  const trimmed = String(url).trim();
-  if (!trimmed) return "";
+export function resolveMediaUrl(url?: string | null): string | null {
+  if (!url) return null;
+
+  const trimmed = url.trim();
+  if (!trimmed) return null;
   if (trimmed.startsWith("blob:") || trimmed.startsWith("data:")) return trimmed;
 
-  let path = trimmed;
-  if (!trimmed.startsWith("/")) {
+  const origin = djangoOrigin();
+
+  if (/^https?:\/\//i.test(trimmed)) {
     try {
       const parsed = new URL(trimmed);
-      if (!parsed.pathname.startsWith("/media/")) {
-        const fromS3 = s3ObjectUrlToMediaPath(trimmed);
-        if (fromS3) path = fromS3;
-        else return trimmed;
-      } else {
-        path = `${parsed.pathname}${parsed.search}`;
+      if (parsed.pathname.startsWith("/media/") && isLoopbackHostname(parsed.hostname)) {
+        return `${origin}${parsed.pathname}${parsed.search}`;
       }
     } catch {
-      return trimmed;
+      /* keep original */
     }
+    return trimmed;
   }
-  if (!path.startsWith("/media/")) return trimmed;
 
-  const api =
-    (typeof import.meta !== "undefined" &&
-      ((import.meta as any).env?.VITE_API_URL as string | undefined)) ||
-    "";
-  if (api.startsWith("http")) {
-    return `${djangoOrigin()}${path}`;
+  if (trimmed.startsWith("/media/")) {
+    return `${origin.replace(/\/$/, "")}${trimmed}`;
   }
-  return path;
+
+  return trimmed;
 }

@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  forwardRef,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useRef,
   useState,
   type ReactNode,
@@ -90,46 +92,75 @@ export function ContentProtection({
   );
 }
 
-/** Append JWT for private /media URLs so &lt;video&gt; / &lt;img&gt; can load authenticated files. */
-export function withMediaAccessToken(url: string, token?: string | null): string {
-  if (!url || !token) return url;
+/** @deprecated Do not put JWTs in media URLs. Auth is httpOnly cookie only. */
+export function withMediaAccessToken(url: string, _token?: string | null): string {
+  if (!url) return url;
   try {
     const isRelative = url.startsWith("/");
     const parsed = isRelative
       ? new URL(url, typeof window !== "undefined" ? window.location.origin : "http://localhost")
       : new URL(url);
-    const path = parsed.pathname;
-    if (!path.includes("/media/")) return url;
-    // Only private lesson paths need a token
-    if (
-      !path.includes("/media/content/") &&
-      !path.includes("/media/assignments/") &&
-      !path.includes("/media/enrollments/")
-    ) {
-      return url;
-    }
-    parsed.searchParams.set("access_token", token);
-    return isRelative ? `${parsed.pathname}${parsed.search}` : parsed.toString();
+    parsed.searchParams.delete("access_token");
+    parsed.searchParams.delete("token");
+    return isRelative ? `${parsed.pathname}${parsed.search}${parsed.hash}` : parsed.toString();
   } catch {
     return url;
   }
 }
 
-export function ProtectedVideo({
-  src,
-  title,
-  className,
-  accessToken,
-}: {
-  src: string;
-  title?: string;
-  className?: string;
-  accessToken?: string | null;
-}) {
+export type ProtectedVideoHandle = {
+  seekTo: (seconds: number, autoplay?: boolean) => void;
+  getCurrentTime: () => number;
+  play: () => void;
+  pause: () => void;
+};
+
+export const ProtectedVideo = forwardRef<
+  ProtectedVideoHandle,
+  {
+    src: string;
+    title?: string;
+    className?: string;
+    accessToken?: string | null;
+    /** When true, use `src` as-is (cookie-auth stream URL). */
+    signedSrc?: boolean;
+    onTimeUpdate?: (seconds: number) => void;
+    onMediaError?: () => void;
+    onPlaying?: () => void;
+    onLoadedData?: (video: HTMLVideoElement) => void;
+  }
+>(function ProtectedVideo(
+  {
+    src,
+    title,
+    className,
+    accessToken,
+    signedSrc = false,
+    onTimeUpdate,
+    onMediaError,
+    onPlaying,
+    onLoadedData,
+  },
+  ref,
+) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [pausedOverlay, setPausedOverlay] = useState(false);
 
   const secureSrc = withMediaAccessToken(src, accessToken);
+
+  useImperativeHandle(ref, () => ({
+    seekTo: (seconds: number, autoplay = true) => {
+      const video = videoRef.current;
+      if (!video) return;
+      video.currentTime = Math.max(0, seconds);
+      if (autoplay) void video.play();
+    },
+    getCurrentTime: () => videoRef.current?.currentTime ?? 0,
+    play: () => {
+      void videoRef.current?.play();
+    },
+    pause: () => videoRef.current?.pause(),
+  }));
 
   const onVisibility = useCallback(() => {
     const video = videoRef.current;
@@ -154,7 +185,9 @@ export function ProtectedVideo({
     >
       <video
         ref={videoRef}
+        key={secureSrc}
         src={secureSrc}
+        crossOrigin="use-credentials"
         controls
         controlsList="nodownload noplaybackrate noremoteplayback"
         disablePictureInPicture
@@ -162,6 +195,10 @@ export function ProtectedVideo({
         className="h-full w-full"
         title={title}
         onContextMenu={(e) => e.preventDefault()}
+        onTimeUpdate={(e) => onTimeUpdate?.(e.currentTarget.currentTime)}
+        onError={() => onMediaError?.()}
+        onPlaying={() => onPlaying?.()}
+        onLoadedData={(e) => onLoadedData?.(e.currentTarget)}
       />
       {pausedOverlay ? (
         <div className="absolute inset-0 grid place-items-center bg-black/80 text-sm text-white">
@@ -170,7 +207,7 @@ export function ProtectedVideo({
       ) : null}
     </div>
   );
-}
+});
 
 export function ProtectedIframe({
   src,
