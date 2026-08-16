@@ -2,6 +2,9 @@
 API views for the courses app.
 """
 
+import logging
+
+from django.db.models import Prefetch, Q
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -10,8 +13,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from apps.common.permissions import ROLE_ADMIN, ROLE_STAFF, ROLE_TEACHER, user_has_role
-from django.db.models import Q
-from apps.content.models import Chapter, Part
+from apps.content.models import Chapter, Part, VideoPart
 from apps.courses.filters import (
     CourseCategoryFilter,
     CourseFAQFilter,
@@ -29,6 +31,8 @@ from apps.courses.serializers import (
 )
 from apps.common.responses import success_response
 
+logger = logging.getLogger(__name__)
+
 
 def _format_duration(seconds: int | None) -> str | None:
     total = int(seconds or 0)
@@ -39,6 +43,16 @@ def _format_duration(seconds: int | None) -> str | None:
     if hours:
         return f"{hours}:{minutes:02d}:{secs:02d}"
     return f"{minutes}:{secs:02d}"
+
+
+def _part_url(part) -> str:
+    file_field = getattr(part, "video_file", None)
+    if file_field:
+        try:
+            return file_field.url
+        except ValueError:
+            pass
+    return getattr(part, "video_url", "") or ""
 
 
 class CourseCategoryViewSet(viewsets.ModelViewSet):
@@ -126,24 +140,56 @@ class CourseViewSet(viewsets.ModelViewSet):
         course = self.get_object()
         chapters = (
             Chapter.objects.filter(course=course, is_published=True)
-            .prefetch_related("parts")
+            .select_related("video")
+            .prefetch_related(
+                Prefetch("parts", queryset=Part.objects.order_by("order", "id")),
+                Prefetch(
+                    "video__video_parts",
+                    queryset=VideoPart.objects.order_by("order", "id"),
+                ),
+            )
             .order_by("order", "id")
         )
         payload = []
         for chapter in chapters:
+            video = chapter.video
+            video_payload = None
+            if video is not None:
+                video_parts = list(getattr(video, "_prefetched_objects_cache", {}).get("video_parts", video.video_parts.all()))
+                video_payload = {
+                    "id": video.id,
+                    "title": video.title,
+                    "url": _part_url(video),
+                    "duration": video.video_duration_seconds,
+                    "parts": [
+                        {
+                            "id": part.id,
+                            "video": part.video_id,
+                            "title": part.title,
+                            "start_time": part.start_time,
+                            "end_time": part.end_time,
+                            "order": part.order,
+                        }
+                        for part in video_parts
+                    ],
+                }
+            chapter_parts = list(getattr(chapter, "_prefetched_objects_cache", {}).get("parts", chapter.parts.all()))
             parts = [
                 {
+                    "id": part.id,
                     "title": part.title,
                     "type": (part.content_type or "VIDEO").lower(),
                     "duration": _format_duration(part.video_duration_seconds),
                     "is_preview": bool(part.is_preview),
                 }
-                for part in chapter.parts.filter(is_published=True).order_by("order", "id")
+                for part in chapter_parts
+                if part.is_published and part.pk != chapter.video_id
             ]
             payload.append(
                 {
                     "title": chapter.title,
                     "description": chapter.description,
+                    "video": video_payload,
                     "parts": parts,
                 }
             )
@@ -334,7 +380,20 @@ class CourseInstructorViewSet(viewsets.ModelViewSet):
                 {"detail": "Only admins can assign instructors."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        return super().create(request, *args, **kwargs)
+        logger.info(
+            "CourseInstructor.create: teacher=%s course=%s is_primary=%s user=%s",
+            request.data.get("teacher"),
+            request.data.get("course"),
+            request.data.get("is_primary"),
+            getattr(request.user, "email", request.user.pk),
+        )
+        response = super().create(request, *args, **kwargs)
+        logger.info(
+            "CourseInstructor.create: saved status=%s body=%s",
+            response.status_code,
+            response.data,
+        )
+        return response
 
     def destroy(self, request, *args, **kwargs):
         if not user_has_role(request.user, ROLE_ADMIN, ROLE_STAFF):

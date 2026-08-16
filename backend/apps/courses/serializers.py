@@ -5,6 +5,7 @@ Serializers for the courses app.
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
+from apps.common.serializers_media import SafeMediaRepresentationMixin
 from apps.courses.models import Course, CourseCategory, CourseFAQ, CourseInstructor
 from apps.teachers.models import Teacher
 
@@ -81,6 +82,28 @@ class CourseInstructorSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    def create(self, validated_data):
+        course = validated_data["course"]
+        teacher = validated_data["teacher"]
+        is_primary = validated_data.get("is_primary", False)
+        existing = (
+            CourseInstructor.all_objects.filter(course=course, teacher=teacher)
+            .order_by("-updated_at")
+            .first()
+        )
+        if existing is None:
+            return CourseInstructor.objects.create(**validated_data)
+        if existing.is_deleted:
+            existing.restore()
+        for field, value in validated_data.items():
+            setattr(existing, field, value)
+        existing.save()
+        if is_primary:
+            CourseInstructor.objects.filter(course=course, is_primary=True).exclude(
+                pk=existing.pk
+            ).update(is_primary=False)
+        return existing
+
 
 class CourseFAQSerializer(serializers.ModelSerializer):
     class Meta:
@@ -97,7 +120,9 @@ class CourseFAQSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
-class CourseListSerializer(serializers.ModelSerializer):
+class CourseListSerializer(SafeMediaRepresentationMixin, serializers.ModelSerializer):
+    safe_media_fields = ("thumbnail",)
+
     categories = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
     category_names = serializers.SerializerMethodField()
     category_name = serializers.SerializerMethodField()
@@ -175,7 +200,9 @@ class CourseListSerializer(serializers.ModelSerializer):
         ).values("student_id").distinct().count()
 
 
-class CourseSerializer(serializers.ModelSerializer):
+class CourseSerializer(SafeMediaRepresentationMixin, serializers.ModelSerializer):
+    safe_media_fields = ("thumbnail", "banner")
+
     categories = serializers.PrimaryKeyRelatedField(
         many=True,
         queryset=CourseCategory.objects.all(),
@@ -312,6 +339,19 @@ class CourseSerializer(serializers.ModelSerializer):
             ],
         ).values("student_id").distinct().count()
 
+    def _get_or_restore_instructor(self, course, teacher):
+        """Avoid UniqueConstraint clashes with soft-deleted CourseInstructor rows."""
+        existing = (
+            CourseInstructor.all_objects.filter(course=course, teacher=teacher)
+            .order_by("-updated_at")
+            .first()
+        )
+        if existing is None:
+            return CourseInstructor.objects.create(course=course, teacher=teacher)
+        if existing.is_deleted:
+            existing.restore()
+        return existing
+
     def _sync_instructors(self, course, instructors, primary):
         if instructors is not None:
             incoming = {t.pk for t in instructors}
@@ -319,17 +359,11 @@ class CourseSerializer(serializers.ModelSerializer):
                 teacher_id__in=incoming
             ).delete()
             for teacher in instructors:
-                CourseInstructor.objects.get_or_create(
-                    course=course,
-                    teacher=teacher,
-                )
+                self._get_or_restore_instructor(course, teacher)
         if primary is not None:
             CourseInstructor.objects.filter(course=course).update(is_primary=False)
             if primary:
-                obj, _ = CourseInstructor.objects.get_or_create(
-                    course=course,
-                    teacher=primary,
-                )
+                obj = self._get_or_restore_instructor(course, primary)
                 obj.is_primary = True
                 obj.save(update_fields=["is_primary", "updated_at"])
 
