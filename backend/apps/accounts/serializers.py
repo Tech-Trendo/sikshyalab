@@ -38,6 +38,7 @@ class UserSerializer(serializers.ModelSerializer):
     title = serializers.SerializerMethodField()
     bio = serializers.SerializerMethodField()
     location = serializers.SerializerMethodField()
+    years_of_experience = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -56,6 +57,7 @@ class UserSerializer(serializers.ModelSerializer):
             "title",
             "bio",
             "location",
+            "years_of_experience",
             "is_email_verified",
             "is_active_account",
             "must_change_password",
@@ -84,7 +86,16 @@ class UserSerializer(serializers.ModelSerializer):
             "title",
             "bio",
             "location",
+            "years_of_experience",
         ]
+
+    def _teacher_profile(self, obj):
+        if getattr(obj, "role", None) != User.Role.TEACHER:
+            return None
+        try:
+            return obj.teacher_profile
+        except Exception:
+            return None
 
     def get_avatar_display(self, obj):
         if obj.avatar:
@@ -96,12 +107,31 @@ class UserSerializer(serializers.ModelSerializer):
         return obj.avatar_url or ""
 
     def get_title(self, obj):
+        teacher = self._teacher_profile(obj)
+        if teacher:
+            from apps.teachers.services import teacher_profile_title
+
+            title = teacher_profile_title(
+                designation=teacher.designation or "",
+                years_of_experience=teacher.years_of_experience,
+            )
+            if title:
+                return title
         profile = getattr(obj, "profile", None)
         return getattr(profile, "title", "") if profile else ""
 
     def get_bio(self, obj):
+        teacher = self._teacher_profile(obj)
+        if teacher and teacher.bio:
+            return teacher.bio
         profile = getattr(obj, "profile", None)
         return getattr(profile, "bio", "") if profile else ""
+
+    def get_years_of_experience(self, obj):
+        teacher = self._teacher_profile(obj)
+        if teacher is not None:
+            return teacher.years_of_experience
+        return None
 
     def get_location(self, obj):
         profile = getattr(obj, "profile", None)
@@ -136,6 +166,14 @@ class ProfileUpdateSerializer(serializers.Serializer):
     def validate_email(self, value):
         email = value.lower().strip()
         user = self.context["request"].user
+        # Teachers keep the email the admin registered — only admins/staff may change it.
+        if getattr(user, "role", None) == user.Role.TEACHER and not (
+            getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)
+        ):
+            if email != (user.email or "").lower().strip():
+                raise serializers.ValidationError(
+                    "Teachers cannot change their email. Contact an admin if it needs updating."
+                )
         if User.objects.filter(email__iexact=email).exclude(pk=user.pk).exists():
             raise serializers.ValidationError("A user with this email already exists.")
         return email
@@ -184,8 +222,14 @@ class ProfileUpdateSerializer(serializers.Serializer):
             user.last_name = data["last_name"]
             user_updates.append("last_name")
         if "email" in data:
-            user.email = data["email"]
-            user_updates.append("email")
+            # Ignore email updates from teachers (admin-registered email is authoritative).
+            if getattr(user, "role", None) == user.Role.TEACHER and not (
+                getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)
+            ):
+                pass
+            else:
+                user.email = data["email"]
+                user_updates.append("email")
         if "phone" in data:
             user.phone = data["phone"]
             user_updates.append("phone")
@@ -223,6 +267,25 @@ class ProfileUpdateSerializer(serializers.Serializer):
 
         if profile_changed:
             profile.save()
+
+        if getattr(user, "role", None) == user.Role.TEACHER:
+            try:
+                teacher = user.teacher_profile
+            except Exception:
+                teacher = None
+            if teacher is not None:
+                teacher_updates: list[str] = []
+                if "bio" in data:
+                    teacher.bio = data.get("bio") or ""
+                    teacher_updates.append("bio")
+                if "title" in data:
+                    title = (data.get("title") or "").strip()
+                    designation = title.split(" · ", 1)[0].strip() if title else ""
+                    if designation:
+                        teacher.designation = designation
+                        teacher_updates.append("designation")
+                if teacher_updates:
+                    teacher.save(update_fields=teacher_updates + ["updated_at"])
 
         return user
 
@@ -464,6 +527,13 @@ class AdminCreateUserSerializer(serializers.Serializer):
     send_email = serializers.BooleanField(default=True)
     course = serializers.UUIDField(required=False, allow_null=True)
     batch = serializers.UUIDField(required=False, allow_null=True)
+    # Teacher-only metadata (optional)
+    designation = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    teacher_designation = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    bio = serializers.CharField(required=False, allow_blank=True)
+    years_of_experience = serializers.IntegerField(required=False, min_value=0)
+    experience = serializers.CharField(required=False, allow_blank=True, max_length=50)
+    exp = serializers.CharField(required=False, allow_blank=True, max_length=50)
 
     def validate_email(self, value):
         return value.lower().strip()
@@ -522,6 +592,28 @@ class AdminCreateUserSerializer(serializers.Serializer):
                     {"batch": "Batch does not belong to the selected course."}
                 )
             attrs["batch_obj"] = batch
+
+        if role == "TEACHER":
+            from apps.teachers.services import parse_years_of_experience
+
+            designation = (
+                (attrs.get("designation") or "").strip()
+                or (attrs.get("teacher_designation") or "").strip()
+            )
+            if designation:
+                attrs["teacher_designation"] = designation
+
+            years = attrs.get("years_of_experience")
+            if years is None:
+                years = parse_years_of_experience(attrs.get("experience"))
+            if years is None:
+                years = parse_years_of_experience(attrs.get("exp"))
+            if years is not None:
+                attrs["teacher_years_of_experience"] = years
+
+            bio = (attrs.get("bio") or "").strip()
+            if bio:
+                attrs["teacher_bio"] = bio
 
         return attrs
 

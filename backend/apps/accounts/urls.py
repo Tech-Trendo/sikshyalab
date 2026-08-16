@@ -1,12 +1,12 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
-from rest_framework_simplejwt.views import TokenRefreshView
 
 from apps.accounts.views import (
     ActivityLogViewSet,
     AdminCreateUserView,
     ChangePasswordView,
     ConsumeLoginHandoffView,
+    CookieTokenRefreshView,
     CreateLoginHandoffView,
     ForgotPasswordView,
     LoginView,
@@ -38,8 +38,8 @@ urlpatterns = [
     path("auth/handoff/consume", ConsumeLoginHandoffView.as_view()),
     path("auth/logout/", LogoutView.as_view(), name="logout"),
     path("auth/logout", LogoutView.as_view()),
-    path("auth/token/refresh/", TokenRefreshView.as_view(), name="token-refresh"),
-    path("auth/token/refresh", TokenRefreshView.as_view()),
+    path("auth/token/refresh/", CookieTokenRefreshView.as_view(), name="token-refresh"),
+    path("auth/token/refresh", CookieTokenRefreshView.as_view()),
     path("auth/profile/", ProfileView.as_view(), name="profile"),
     path("auth/profile", ProfileView.as_view()),
     path("auth/settings/", SettingsView.as_view(), name="settings"),

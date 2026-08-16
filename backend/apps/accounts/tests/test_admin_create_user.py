@@ -38,6 +38,9 @@ class TestAdminCreateUserAPI:
                 "role": "TEACHER",
                 "first_name": "New",
                 "last_name": "Teacher",
+                "designation": "Senior Instructor",
+                "exp": "7 yrs",
+                "bio": "Teaches full-stack development.",
                 "send_email": False,
             },
             format="json",
@@ -48,7 +51,41 @@ class TestAdminCreateUserAPI:
         assert res.data["must_change_password"] is True
         user = User.objects.get(email="new.teacher@test.shikshalab.io")
         assert Teacher.objects.filter(user=user).exists()
+        teacher = Teacher.objects.get(user=user)
+        assert teacher.designation == "Senior Instructor"
+        assert teacher.years_of_experience == 7
+        assert teacher.bio == "Teaches full-stack development."
+        assert user.profile.title == "Senior Instructor · 7 yrs"
+        assert user.profile.bio == "Teaches full-stack development."
         assert user.check_password(res.data["temporary_password"])
+
+    def test_create_teacher_profile_visible_on_auth_profile(self, auth_client):
+        res = auth_client.post(
+            "/api/v1/accounts/admin/create-user/",
+            {
+                "email": "profile.teacher@test.shikshalab.io",
+                "role": "TEACHER",
+                "name": "Profile Teacher",
+                "designation": "Instructor",
+                "experience": "3+ years",
+                "bio": "Backend specialist.",
+                "send_email": False,
+            },
+            format="json",
+        )
+        assert res.status_code == status.HTTP_201_CREATED
+        user = User.objects.get(email="profile.teacher@test.shikshalab.io")
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        token = RefreshToken.for_user(user).access_token
+        profile_res = auth_client.get(
+            "/api/v1/accounts/auth/profile/",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        assert profile_res.status_code == status.HTTP_200_OK
+        assert profile_res.data["title"] == "Instructor · 3 yrs"
+        assert profile_res.data["bio"] == "Backend specialist."
+        assert profile_res.data["years_of_experience"] == 3
 
     def test_create_student_with_course(self, auth_client, course, admin_user):
         res = auth_client.post(

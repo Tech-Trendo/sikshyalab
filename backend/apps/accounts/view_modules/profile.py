@@ -38,7 +38,10 @@ class ProfileView(generics.RetrieveUpdateAPIView):
 
     def retrieve(self, request, *args, **kwargs):
         UserProfile.objects.get_or_create(user=request.user)
-        user = User.objects.select_related("profile").get(pk=request.user.pk)
+        user = (
+            User.objects.select_related("profile", "teacher_profile")
+            .get(pk=request.user.pk)
+        )
         serializer = UserSerializer(user, context={"request": request})
         return Response(serializer.data)
 
@@ -68,7 +71,7 @@ class ProfileView(generics.RetrieveUpdateAPIView):
                 object_repr=user.email,
                 metadata={"avatar_uploaded": True},
             )
-            user = User.objects.select_related("profile").get(pk=user.pk)
+            user = User.objects.select_related("profile", "teacher_profile").get(pk=user.pk)
             return Response(UserSerializer(user, context={"request": request}).data)
 
         # Prefer flat dashboard payload; fall back to nested profile fields.
@@ -120,21 +123,28 @@ class ProfileView(generics.RetrieveUpdateAPIView):
         }
         if user_fields:
             if "email" in user_fields:
-                email = str(user_fields["email"]).lower().strip()
-                if User.objects.filter(email__iexact=email).exclude(pk=request.user.pk).exists():
-                    return Response(
-                        {"email": ["A user with this email already exists."]},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                user_fields["email"] = email
-            user_serializer = UserSerializer(
-                request.user,
-                data=user_fields,
-                partial=True,
-                context={"request": request},
-            )
-            user_serializer.is_valid(raise_exception=True)
-            user_serializer.save()
+                # Teachers keep the admin-registered email.
+                if getattr(request.user, "role", None) == User.Role.TEACHER and not (
+                    request.user.is_staff or request.user.is_superuser
+                ):
+                    user_fields.pop("email", None)
+                else:
+                    email = str(user_fields["email"]).lower().strip()
+                    if User.objects.filter(email__iexact=email).exclude(pk=request.user.pk).exists():
+                        return Response(
+                            {"email": ["A user with this email already exists."]},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    user_fields["email"] = email
+            if user_fields:
+                user_serializer = UserSerializer(
+                    request.user,
+                    data=user_fields,
+                    partial=True,
+                    context={"request": request},
+                )
+                user_serializer.is_valid(raise_exception=True)
+                user_serializer.save()
 
         log_activity(
             request.user,
@@ -234,4 +244,6 @@ class ActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
     search_fields = ["action", "module", "object_repr", "user__email"]
     ordering_fields = ["created_at"]
     ordering = ["-created_at"]
+
+
 

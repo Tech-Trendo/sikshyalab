@@ -3,6 +3,7 @@
 from apps.accounts.view_modules.auth import (
     AdminCreateUserView,
     ConsumeLoginHandoffView,
+    CookieTokenRefreshView,
     CreateLoginHandoffView,
     ForgotPasswordView,
     LoginView,
@@ -26,6 +27,7 @@ __all__ = [
     "AdminCreateUserView",
     "ChangePasswordView",
     "ConsumeLoginHandoffView",
+    "CookieTokenRefreshView",
     "CreateLoginHandoffView",
     "ForgotPasswordView",
     "LoginView",

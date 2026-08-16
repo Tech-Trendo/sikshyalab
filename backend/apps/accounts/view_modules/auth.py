@@ -1,6 +1,7 @@
 """Auth / handoff / password-reset API views."""
 
 from datetime import timedelta
+import secrets
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -12,6 +13,7 @@ from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.views import TokenRefreshView
 
 from apps.accounts.activity import get_client_ip, log_activity
 from apps.accounts.models import UserProfile, UserSettings
@@ -33,6 +35,7 @@ from apps.accounts.serializers import (
     UserSerializer,
     VerifyOTPSerializer,
 )
+from apps.common.media_cookie import clear_media_cookie, set_media_cookie
 from apps.notifications.services import ensure_inbox_seeded, get_or_create_preferences
 
 User = get_user_model()
@@ -75,6 +78,9 @@ class AdminCreateUserView(APIView):
                 course=data.get("course_obj"),
                 batch=data.get("batch_obj"),
                 changed_by=request.user,
+                teacher_designation=data.get("teacher_designation", ""),
+                teacher_bio=data.get("teacher_bio", ""),
+                teacher_years_of_experience=data.get("teacher_years_of_experience"),
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -144,17 +150,21 @@ class LoginView(APIView):
         )
 
         refresh = RefreshToken.for_user(user)
-        return Response(
+        access = str(refresh.access_token)
+        response = Response(
             {
                 "user": UserSerializer(user, context={"request": request}).data,
                 "tokens": {
                     "refresh": str(refresh),
-                    "access": str(refresh.access_token),
+                    "access": access,
                 },
                 "must_change_password": bool(user.must_change_password),
             },
             status=status.HTTP_200_OK,
         )
+        # httpOnly cookie for media streaming (in addition to Bearer JWT for APIs)
+        set_media_cookie(response, access)
+        return response
 
 
 class CreateLoginHandoffView(APIView):
@@ -208,7 +218,11 @@ class ConsumeLoginHandoffView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         cache.delete(key)
-        return Response(payload, status=status.HTTP_200_OK)
+        response = Response(payload, status=status.HTTP_200_OK)
+        access = (payload.get("access") or "").strip()
+        if access:
+            set_media_cookie(response, access)
+        return response
 
 
 class PasswordResetThrottle(AnonRateThrottle):
@@ -341,8 +355,25 @@ class LogoutView(APIView):
             object_id=request.user.pk,
             object_repr=request.user.email,
         )
-        return Response(
+        response = Response(
             {"detail": "Successfully logged out."},
             status=status.HTTP_205_RESET_CONTENT,
         )
+        clear_media_cookie(response)
+        return response
+
+
+class CookieTokenRefreshView(TokenRefreshView):
+    """Refresh JWT pair and rotate the httpOnly media-session cookie."""
+
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == 200:
+            access = None
+            data = getattr(response, "data", None) or {}
+            if isinstance(data, dict):
+                access = data.get("access")
+            if access:
+                set_media_cookie(response, access)
+        return response
 

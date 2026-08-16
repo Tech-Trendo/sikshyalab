@@ -11,6 +11,7 @@ from django.db import transaction
 from apps.accounts.emails import send_account_credentials_email
 from apps.accounts.models import UserProfile, UserSettings
 from apps.notifications.services import ensure_inbox_seeded, get_or_create_preferences
+from apps.teachers.services import apply_teacher_admin_fields
 
 User = get_user_model()
 
@@ -202,6 +203,9 @@ def provision_user(
     course=None,
     batch=None,
     changed_by=None,
+    teacher_designation: str = "",
+    teacher_bio: str = "",
+    teacher_years_of_experience: int | None = None,
 ) -> tuple[User, str, bool, str, object | None]:
     """
     Create a user with a random temporary password (hashed via set_password).
@@ -276,6 +280,14 @@ def provision_user(
         if create_role_profile:
             _ensure_role_profile(user, role)
 
+        if role == User.Role.TEACHER:
+            apply_teacher_admin_fields(
+                user,
+                designation=teacher_designation,
+                bio=teacher_bio,
+                years_of_experience=teacher_years_of_experience,
+            )
+
         if role == User.Role.STUDENT and course is not None:
             student = _get_student_profile(user)
             if student is not None:
@@ -322,6 +334,14 @@ def provision_user(
 
     if create_role_profile:
         _ensure_role_profile(user, role)
+
+    if role == User.Role.TEACHER:
+        apply_teacher_admin_fields(
+            user,
+            designation=teacher_designation,
+            bio=teacher_bio,
+            years_of_experience=teacher_years_of_experience,
+        )
 
     if role == User.Role.STUDENT and course is not None:
         student = _get_student_profile(user)
