@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import mimetypes
 import os
 from pathlib import Path
@@ -9,13 +10,19 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.storage import default_storage
-from django.http import FileResponse, Http404, HttpResponseForbidden, HttpResponseRedirect
+from django.http import FileResponse, Http404, HttpResponseForbidden
 from django.views import View
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.common.media_utils import MEDIA_ALIASES
+from apps.common.media_utils import (
+    MEDIA_ALIASES,
+    cache_storage_object_locally,
+    local_media_file_exists,
+    promote_local_file_to_s3,
+)
 
+logger = logging.getLogger(__name__)
 User = get_user_model()
 
 # Marketing / CMS assets — publicly readable
@@ -59,7 +66,12 @@ def is_private_media(relpath: str) -> bool:
 
 
 def resolve_user_from_request(request):
-    """Accept Authorization Bearer or ?access_token= (for <video>/<img> tags)."""
+    """
+    Resolve the user for ``/media/`` gateway requests.
+
+    Accepts session/DRF user, ``Authorization: Bearer``, or the httpOnly media
+    cookie. Never accepts tokens from URL query parameters.
+    """
     user = getattr(request, "user", None)
     if user is not None and getattr(user, "is_authenticated", False):
         return user
@@ -69,7 +81,9 @@ def resolve_user_from_request(request):
     if auth.lower().startswith("bearer "):
         raw = auth.split(" ", 1)[1].strip()
     if not raw:
-        raw = request.GET.get("access_token") or request.GET.get("token")
+        from apps.common.media_cookie import read_media_cookie
+
+        raw = read_media_cookie(request)
     if not raw:
         return None
 
@@ -91,12 +105,16 @@ def resolve_user_from_request(request):
 
 
 def user_can_access_media(user, relpath: str) -> bool:
+    """
+    Gate ``/media/<path>`` downloads.
+
+    Marketing CMS/SEO/avatar assets remain readable without auth so the public
+    site can render. Lesson content (``content/``, assignments, PII, etc.)
+    always requires an authenticated user (Bearer or media cookie — never query).
+    """
     if is_public_media(relpath):
         return True
-    if not is_private_media(relpath):
-        # Unknown paths: require auth as a safe default
-        return bool(user and user.is_authenticated)
-    return bool(user and user.is_authenticated)
+    return bool(user and getattr(user, "is_authenticated", False))
 
 
 def _storage_candidates(relpath: str) -> list[str]:
@@ -108,22 +126,70 @@ def _storage_candidates(relpath: str) -> list[str]:
 
 
 def _resolve_storage_key(relpath: str) -> str | None:
+    """
+    Resolve a PostgreSQL FileField key to an object available in S3.
+
+    Hybrid migration: if the key is missing on S3 but a legacy local file
+    exists under MEDIA_ROOT, promote it to S3 (same key, no DB change).
+    """
     for key in _storage_candidates(relpath):
         try:
             if default_storage.exists(key):
                 return key
-        except Exception:
-            continue
+        except Exception as exc:
+            logger.warning("media.s3.exists_failed key=%s err=%s", key, exc)
+
+    if getattr(settings, "USE_S3", False):
+        for key in _storage_candidates(relpath):
+            if local_media_file_exists(key):
+                try:
+                    if promote_local_file_to_s3(key):
+                        logger.info("media.hybrid.promoted key=%s", key)
+                        return key
+                except Exception:
+                    logger.exception("media.hybrid.promote_failed key=%s", key)
     return None
 
 
+def _content_type_for_key(key: str, fh) -> str:
+    guessed, _ = mimetypes.guess_type(key)
+    if guessed:
+        return guessed
+    try:
+        obj = getattr(fh, "obj", None)
+        if obj is not None:
+            ctype = obj.get("ContentType")
+            if ctype:
+                return ctype
+    except Exception:
+        pass
+    return "application/octet-stream"
+
+
 def _serve_from_storage(relpath: str):
-    """Redirect to a signed/public object URL when using S3-compatible storage."""
+    """
+    Stream the object through Django (HTTP 200 + bytes) from S3.
+
+    PostgreSQL keys are treated as S3 object keys (under AWS_LOCATION).
+    Legacy local files are promoted to S3 on first request. Objects are
+    also mirrored under MEDIA_ROOT so DEBUG static() can serve them.
+    """
     key = _resolve_storage_key(relpath)
     if not key:
         raise Http404("File not found.")
-    url = default_storage.url(key)
-    response = HttpResponseRedirect(url)
+
+    cache_storage_object_locally(key)
+
+    try:
+        fh = default_storage.open(key, "rb")
+    except Exception:
+        logger.exception("media.s3.open_failed relpath=%s key=%s", relpath, key)
+        raise Http404("File not found.")
+
+    content_type = _content_type_for_key(key, fh)
+    response = FileResponse(fh, content_type=content_type)
+    response["Content-Disposition"] = f'inline; filename="{os.path.basename(key)}"'
+    response["X-Content-Type-Options"] = "nosniff"
     if is_private_media(relpath):
         response["Cache-Control"] = "private, no-store"
     else:
@@ -163,11 +229,16 @@ def _serve_from_disk(relpath: str):
     return response
 
 
+def debug_media_serve(request, path, document_root=None):
+    """DEBUG media route — always auth-gated (never serve private files anonymously)."""
+    return AuthenticatedMediaView.as_view()(request, path=path)
+
+
 class AuthenticatedMediaView(View):
     """
-    Gate media access, then serve from local MEDIA_ROOT or redirect to S3.
+    Gate media access, then stream bytes from S3 (USE_S3) or local MEDIA_ROOT.
 
-    Private lesson/student files require a valid JWT (header or access_token query).
+    Private lesson/student files require a valid JWT (Bearer or media cookie).
     """
 
     def get(self, request, path: str = ""):

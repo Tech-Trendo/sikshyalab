@@ -1,12 +1,13 @@
 """
-Audit and repair FileField/ImageField paths that point at missing files.
+Audit media keys referenced by the database.
 
-Strategy:
-1. Ensure shared placeholder PNG exists.
-2. Restore known legacy aliases (e.g. iic_logo.jpg ← IIC.jpg).
-3. For each DB media path that is missing, recreate the file at that exact path
-   (copy of placeholder) so public URLs keep working — no migration required.
-4. Optionally unpublish rows that still cannot be repaired.
+When USE_S3=true:
+  * Ensures the shared S3 placeholder exists (no local MEDIA_ROOT writes).
+  * Promotes legacy local files to S3 when present (same key, no DB change).
+  * Does **not** invent local placeholder copies under MEDIA_ROOT.
+
+When USE_S3=false (legacy disk mode):
+  * Restores aliases and missing paths on local disk as before.
 
 Usage:
   python manage.py fix_missing_media
@@ -19,19 +20,22 @@ from __future__ import annotations
 import shutil
 
 from django.apps import apps
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db.models import FileField, ImageField
 
 from apps.common.media_utils import (
     abs_media_path,
     ensure_placeholder,
+    local_media_file_exists,
     media_file_exists,
+    promote_local_file_to_s3,
     restore_aliased_files,
 )
 
 
 class Command(BaseCommand):
-    help = "Restore aliased / missing media files referenced by the database."
+    help = "Restore aliased / missing media referenced by the database (S3-aware)."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -48,6 +52,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         dry = options["dry_run"]
         unpublish = options["unpublish_broken"]
+        use_s3 = getattr(settings, "USE_S3", False)
 
         if dry:
             self.stdout.write("[dry-run] would ensure placeholder + restore media aliases")
@@ -90,10 +95,18 @@ class Command(BaseCommand):
                         still_broken.append(label)
                         continue
 
-                    # Recreate the exact relative path so existing API/HTML URLs keep working
+                    if use_s3:
+                        if local_media_file_exists(name) and promote_local_file_to_s3(name):
+                            restored_paths += 1
+                            self.stdout.write(self.style.SUCCESS(f"  -> promoted to S3: {name}"))
+                        else:
+                            still_broken.append(label)
+                        continue
+
+                    # Legacy disk: recreate the exact relative path
                     dest = abs_media_path(name)
                     dest.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(ensure_placeholder(), dest)
+                    shutil.copy2(abs_media_path(ensure_placeholder()), dest)
                     restored_paths += 1
                     self.stdout.write(self.style.SUCCESS(f"  -> restored file at {name}"))
 
@@ -104,7 +117,6 @@ class Command(BaseCommand):
                     and hasattr(obj, "is_published")
                     and obj.is_published
                 ):
-                    # Only unpublish if still missing after restore attempt
                     still = False
                     for field in fields:
                         val = getattr(obj, field.name)
@@ -117,7 +129,7 @@ class Command(BaseCommand):
                         obj.save(update_fields=["is_published"])
                         unpublished += 1
 
-                if not dry:
+                if not dry and not use_s3:
                     for field in fields:
                         val = getattr(obj, field.name)
                         name = getattr(val, "name", "") or ""
@@ -132,7 +144,9 @@ class Command(BaseCommand):
         )
         if still_broken:
             self.stdout.write(self.style.ERROR(f"Still broken ({len(still_broken)}):"))
-            for row in still_broken:
+            for row in still_broken[:50]:
                 self.stdout.write(f"  - {row}")
+            if len(still_broken) > 50:
+                self.stdout.write(f"  … and {len(still_broken) - 50} more")
         else:
             self.stdout.write(self.style.SUCCESS("All media references resolve to existing files."))
