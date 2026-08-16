@@ -7,6 +7,8 @@ from apps.content.models import (
     Part,
     PartAttachment,
     PartResource,
+    VideoPart,
+    VideoTimestamp,
     StudentProgress,
 )
 
@@ -29,7 +31,16 @@ class PartInline(admin.TabularInline):
 class PartResourceInline(admin.TabularInline):
     model = PartResource
     extra = 0
-    fields = ("title", "resource_type", "file", "external_url", "order")
+    fields = (
+        "title",
+        "resource_type",
+        "file",
+        "original_file",
+        "external_url",
+        "duration_seconds",
+        "status",
+        "order",
+    )
 
 
 class PartAttachmentInline(admin.TabularInline):
@@ -39,11 +50,18 @@ class PartAttachmentInline(admin.TabularInline):
     readonly_fields = ("file_size", "file_type")
 
 
+class VideoPartInline(admin.TabularInline):
+    model = VideoPart
+    extra = 0
+    fields = ("title", "start_time", "end_time", "order")
+
+
 @admin.register(Chapter)
 class ChapterAdmin(admin.ModelAdmin):
     list_display = (
         "title",
         "course",
+        "video",
         "order",
         "is_published",
         "duration_minutes",
@@ -71,15 +89,39 @@ class PartAdmin(admin.ModelAdmin):
     search_fields = ("title", "slug", "description")
     prepopulated_fields = {"slug": ("title",)}
     raw_id_fields = ("chapter",)
-    inlines = [PartResourceInline, PartAttachmentInline]
+    inlines = [PartResourceInline, PartAttachmentInline, VideoPartInline]
+
+
+class VideoTimestampInline(admin.TabularInline):
+    model = VideoTimestamp
+    extra = 0
+    fields = ("time_seconds", "label", "order")
 
 
 @admin.register(PartResource)
 class PartResourceAdmin(admin.ModelAdmin):
-    list_display = ("title", "part", "resource_type", "order", "created_at")
-    list_filter = ("resource_type",)
-    search_fields = ("title", "external_url")
+    list_display = (
+        "title",
+        "part",
+        "resource_type",
+        "status",
+        "duration_seconds",
+        "order",
+        "created_at",
+    )
+    list_filter = ("resource_type", "status")
+    search_fields = ("title", "external_url", "error_message")
     raw_id_fields = ("part",)
+    readonly_fields = ("error_message", "created_at", "updated_at")
+    inlines = [VideoTimestampInline]
+
+
+@admin.register(VideoTimestamp)
+class VideoTimestampAdmin(admin.ModelAdmin):
+    list_display = ("label", "resource", "time_seconds", "order", "created_at")
+    search_fields = ("label", "resource__title")
+    raw_id_fields = ("resource",)
+    ordering = ("resource", "time_seconds", "id")
 
 
 @admin.register(PartAttachment)
@@ -89,6 +131,14 @@ class PartAttachmentAdmin(admin.ModelAdmin):
     search_fields = ("title",)
     raw_id_fields = ("part",)
     readonly_fields = ("file_size", "file_type")
+
+
+@admin.register(VideoPart)
+class VideoPartAdmin(admin.ModelAdmin):
+    list_display = ("title", "video", "order", "start_time", "end_time", "created_at")
+    list_filter = ("order",)
+    search_fields = ("title",)
+    raw_id_fields = ("video",)
 
 
 @admin.register(StudentProgress)

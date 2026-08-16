@@ -8,6 +8,8 @@ from apps.content.views import (
     PartAttachmentViewSet,
     PartResourceViewSet,
     PartViewSet,
+    VideoPartViewSet,
+    VideoTimestampViewSet,
     StudentProgressViewSet,
 )
 
@@ -18,6 +20,8 @@ router.register(r"chapters", ChapterViewSet, basename="chapter")
 router.register(r"parts", PartViewSet, basename="part")
 router.register(r"resources", PartResourceViewSet, basename="part-resource")
 router.register(r"attachments", PartAttachmentViewSet, basename="part-attachment")
+router.register(r"video-parts", VideoPartViewSet, basename="video-part")
+router.register(r"timestamps", VideoTimestampViewSet, basename="video-timestamp")
 router.register(r"progress", StudentProgressViewSet, basename="student-progress")
 router.register(r"chapter-progress", ChapterProgressViewSet, basename="chapter-progress")
 router.register(r"course-progress", CourseProgressViewSet, basename="course-progress")

@@ -74,6 +74,11 @@ class IsAdminOrTeacherContentManager(BasePermission):
             course = getattr(obj.chapter, "course", None)
         if course is None and hasattr(obj, "part"):
             course = getattr(obj.part.chapter, "course", None)
+        if course is None and hasattr(obj, "resource"):
+            part = getattr(obj.resource, "part", None)
+            course = getattr(getattr(part, "chapter", None), "course", None)
+        if course is None and hasattr(obj, "video"):
+            course = getattr(getattr(obj.video, "chapter", None), "course", None)
 
         return user_teaches_course(request.user, course)
 
@@ -95,3 +100,19 @@ class IsStudentOwnProgress(BasePermission):
         if student is None:
             return False
         return getattr(obj, "student_id", None) == student.pk
+
+
+class MediaStreamCookieRequired(BasePermission):
+    """
+    Require a valid media-session cookie user for ``/stream/``.
+
+    Fail closed as NotFound so unauthenticated probes cannot distinguish
+    missing auth from a missing resource (no 401 / WWW-Authenticate).
+    """
+
+    def has_permission(self, request, view):
+        from rest_framework.exceptions import NotFound
+
+        if not request.user or not request.user.is_authenticated:
+            raise NotFound()
+        return True

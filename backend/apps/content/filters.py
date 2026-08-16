@@ -11,6 +11,8 @@ from apps.content.models import (
     Part,
     PartAttachment,
     PartResource,
+    VideoPart,
+    VideoTimestamp,
     StudentProgress,
 )
 
@@ -53,6 +55,25 @@ class PartAttachmentFilter(django_filters.FilterSet):
     class Meta:
         model = PartAttachment
         fields = ["part", "file_type"]
+
+
+class VideoPartFilter(django_filters.FilterSet):
+    video = django_filters.NumberFilter(field_name="video_id")
+    chapter = django_filters.NumberFilter(field_name="video__chapter_id")
+    order = django_filters.NumberFilter()
+
+    class Meta:
+        model = VideoPart
+        fields = ["video", "chapter", "order"]
+
+
+class VideoTimestampFilter(django_filters.FilterSet):
+    resource = django_filters.NumberFilter(field_name="resource_id")
+    part = django_filters.NumberFilter(field_name="resource__part_id")
+
+    class Meta:
+        model = VideoTimestamp
+        fields = ["resource", "part"]
 
 
 class StudentProgressFilter(django_filters.FilterSet):
