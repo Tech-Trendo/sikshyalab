@@ -82,6 +82,7 @@ const groups: Record<Role, { label: string; items: { to: string; label: string; 
         { to: "/dashboard/courses", label: "My Courses", icon: BookOpen },
         { to: "/dashboard/tasks", label: "Task Board", icon: Kanban },
         { to: "/dashboard/assignments", label: "Assignments", icon: ClipboardList },
+        { to: "/dashboard/resources", label: "Resources", icon: FolderOpen },
         { to: "/dashboard/certificates", label: "Certificates", icon: Award },
         { to: "/dashboard/fees", label: "Fees", icon: Banknote },
       ],

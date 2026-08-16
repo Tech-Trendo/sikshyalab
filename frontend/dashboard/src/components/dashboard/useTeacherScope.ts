@@ -28,8 +28,16 @@ export function useTeacherScope() {
     const myCourses = data.courses.filter(
       (c) => c.instructor === teacherName || courseTitles.has(c.title),
     );
+    for (const c of myCourses) courseTitles.add(c.title);
     const myStudents = data.students.filter((s) => batchIds.has(s.batch));
-    const myAssignments = data.assignments.filter((a) => a.teacher === teacherName);
+    // Trust API-scoped rows, plus course/batch membership (admin-created assignments
+    // may list a different Assignment.teacher name than the course instructor).
+    const myAssignments = data.assignments.filter(
+      (a) =>
+        a.teacher === teacherName ||
+        courseTitles.has(a.course) ||
+        (a.batch ? batchIds.has(a.batch) : false),
+    );
 
     return {
       isTeacher,

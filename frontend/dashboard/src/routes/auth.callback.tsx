@@ -99,7 +99,7 @@ async function consumeHandoffCode(code: string): Promise<{
     const djangoOrigin =
       (typeof import.meta !== "undefined" &&
         (import.meta as { env?: { VITE_DJANGO_ORIGIN?: string } }).env?.VITE_DJANGO_ORIGIN) ||
-      "http://127.0.0.1:8000";
+      "http://192.168.100.154:8000";
     const consumeUrl = base.startsWith("http")
       ? `${base.replace(/\/$/, "")}/accounts/auth/handoff/consume/`
       : `${djangoOrigin.replace(/\/$/, "")}/api/v1/accounts/auth/handoff/consume/`;

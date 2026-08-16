@@ -70,6 +70,7 @@ export type PartResourceItem = {
   fileName: string;
   fileUrl: string | null;
   uploadedAt: string;
+  timestamps?: unknown;
 };
 export type StudentSubmission = {
   id: string;
@@ -245,10 +246,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
             chapterIndex,
             partIndex,
             title: resource.title,
-            type: resourceType === "PDF" ? "pdf" : resourceType === "DOC" ? "notes" : "other",
+            type: resourceType === "PDF" ? "pdf" : resourceType === "DOC" ? "notes" : resourceType === "VIDEO" ? "video" : "other",
             fileName,
             fileUrl,
             uploadedAt: resource.created_at,
+            timestamps: resource.timestamps,
           } satisfies PartResourceItem];
         }
       }
@@ -907,19 +909,22 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       type: r.type,
       file: r.file,
     });
-    if (!result.ok || !result.data) return { ok: false, detail: result.detail || "Upload failed" };
+    // HTTP 201 is success even if the JSON body is empty or envelope-wrapped.
+    if (!result.ok) return { ok: false, detail: result.detail || "Upload failed" };
     const data = result.data;
-    setPartResources((prev) => [{
-      id: String(data.id),
-      courseSlug: r.courseSlug,
-      chapterIndex: r.chapterIndex,
-      partIndex: r.partIndex,
-      title: data.title,
-      type: r.type,
-      fileName: r.file.name,
-      fileUrl: data.file || data.external_url || null,
-      uploadedAt: data.created_at,
-    }, ...prev]);
+    if (data && data.id) {
+      setPartResources((prev) => [{
+        id: String(data.id),
+        courseSlug: r.courseSlug,
+        chapterIndex: r.chapterIndex,
+        partIndex: r.partIndex,
+        title: data.title || r.title,
+        type: r.type,
+        fileName: r.file.name,
+        fileUrl: data.file || data.external_url || null,
+        uploadedAt: data.created_at || new Date().toISOString(),
+      }, ...prev]);
+    }
     return { ok: true };
   }, []);
 

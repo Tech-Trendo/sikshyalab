@@ -20,7 +20,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  ChevronRight,
   Plus,
   Pencil,
   Trash2,
@@ -71,29 +70,26 @@ function PartContentPanel({ part }: { part: CoursePart }) {
   }
 
   const body = part.notes || part.description || "";
+  const pdfUrl = part.type === "pdf" ? part.videoUrl : "";
+  if (!body && !pdfUrl) return null;
+
   return (
     <div className="mt-2 space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
       {body ? (
         <div className="prose prose-sm max-w-none text-sm whitespace-pre-wrap text-foreground">
           {body}
         </div>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          {part.type === "pdf"
-            ? "No PDF notes uploaded for this part."
-            : "No notes available for this part."}
-        </p>
-      )}
-      {part.type === "pdf" && part.videoUrl && (
+      ) : null}
+      {pdfUrl ? (
         <a
-          href={part.videoUrl}
+          href={pdfUrl}
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
         >
           Open PDF <ExternalLink className="h-3 w-3" />
         </a>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -392,15 +388,10 @@ function CourseContentPage() {
                           <div className="flex items-center gap-1">
                             <button
                               type="button"
-                              className="flex min-w-0 flex-1 items-center justify-between text-left text-sm hover:text-primary"
+                              className="flex min-w-0 flex-1 items-center text-left text-sm hover:text-primary"
                               onClick={() => setExpandedPart(expanded ? null : partKey)}
                             >
                               <span>{p.title}</span>
-                              <ChevronRight
-                                className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${
-                                  expanded ? "rotate-90" : ""
-                                }`}
-                              />
                             </button>
                             {canEditContent && (
                               <div className="flex shrink-0 gap-0.5">

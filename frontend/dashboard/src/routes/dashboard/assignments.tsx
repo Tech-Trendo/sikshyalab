@@ -284,7 +284,12 @@ function TeacherAdminAssignments() {
       submissions: 0,
       total: targets.total,
       status: form.status,
-      teacher: isTeacher ? teacherName : (batches.find((b) => b.id === targets.batch)?.teacher || teacherName),
+      // Prefer course instructor so the assigned teacher receives the assignment
+      teacher: isTeacher
+        ? teacherName
+        : courses.find((c) => c.title === form.course)?.instructor ||
+          batches.find((b) => b.id === targets.batch)?.teacher ||
+          teacherName,
       portalOpen,
       assignStudentId: targets.studentId,
     });
