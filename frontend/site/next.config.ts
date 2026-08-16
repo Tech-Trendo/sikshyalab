@@ -4,6 +4,7 @@ function resolveDjangoProxyTarget(): string {
   const raw = (
     process.env.API_PROXY_TARGET ||
     process.env.NEXT_PUBLIC_DJANGO_ORIGIN ||
+    process.env.NEXT_PUBLIC_API_URL ||
     "http://localhost:8000"
   ).replace(/\/$/, "");
   try {
@@ -29,12 +30,12 @@ function djangoRemotePatterns() {
     { protocol: "https", hostname: "images.unsplash.com" },
     { protocol: "https", hostname: "i.pravatar.cc" },
     { protocol: "http", hostname: "localhost", port: "8000", pathname: "/media/**" },
-    { protocol: "http", hostname: "127.0.0.1", port: "8000", pathname: "/media/**" },
+    { protocol: "http", hostname: "192.168.100.154", port: "8000", pathname: "/media/**" },
   ];
 
   try {
     const u = new URL(api);
-    if (u.hostname && u.hostname !== "localhost" && u.hostname !== "127.0.0.1") {
+    if (u.hostname && u.hostname !== "localhost" && u.hostname !== "192.168.100.154") {
       patterns.push({
         protocol: (u.protocol.replace(":", "") as "http" | "https") || "http",
         hostname: u.hostname,

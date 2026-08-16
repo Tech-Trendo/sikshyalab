@@ -43,8 +43,18 @@ function resolveApiBase(): string {
   if (configured.startsWith("http://") || configured.startsWith("https://")) {
     return configured.replace(/\/$/, "");
   }
-  const django = (process.env.API_PROXY_TARGET || "http://localhost:8000").replace(/\/$/, "");
-  return `${django}/api/v1`;
+  const django =
+    (
+      process.env.NEXT_PUBLIC_API_URL ||
+      process.env.API_PROXY_TARGET ||
+      process.env.NEXT_PUBLIC_DJANGO_ORIGIN ||
+      "http://localhost:8000"
+    ).replace(/\/$/, "");
+  try {
+    return `${new URL(django.includes("://") ? django : `http://${django}`).origin}/api/v1`;
+  } catch {
+    return `${django.replace(/\/api\/v1\/?$/, "")}/api/v1`;
+  }
 }
 
 async function seoFetch<T>(path: string): Promise<T | null> {

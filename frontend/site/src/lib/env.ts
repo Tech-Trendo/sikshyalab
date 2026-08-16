@@ -11,29 +11,49 @@ function readEnv(name: string): string | undefined {
   return v?.trim() || undefined;
 }
 
-/** Django machine origin, e.g. http://192.168.100.154:8000 or http://localhost:8000 */
-export function djangoOrigin(): string {
-  const explicit = readEnv("NEXT_PUBLIC_DJANGO_ORIGIN") || readEnv("API_PROXY_TARGET");
-  if (explicit) {
-    try {
-      const u = new URL(explicit.includes("://") ? explicit : `http://${explicit}`);
-      if (u.port === "8081" || u.port === "5173") {
-        return `${u.protocol}//${u.hostname}:8000`;
-      }
-      return u.origin;
-    } catch {
-      /* fall through */
+function originFromConfiguredUrl(raw?: string | null): string | undefined {
+  if (!raw?.trim()) return undefined;
+  try {
+    const u = new URL(raw.includes("://") ? raw : `http://${raw}`);
+    // Misconfig: pointed at the Next/Vite app instead of Django
+    if (u.port === "8081" || u.port === "5173") {
+      return `${u.protocol}//${u.hostname}:8000`;
     }
+    return u.origin;
+  } catch {
+    return undefined;
   }
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0" ||
+    hostname === "[::1]"
+  );
+}
+
+/**
+ * Django origin for media URLs — same source as working API calls.
+ * Prefer NEXT_PUBLIC_API_URL (the env var used by apiBase()), then explicit origin.
+ */
+export function djangoOrigin(): string {
+  const fromApi = originFromConfiguredUrl(readEnv("NEXT_PUBLIC_API_URL"));
+  if (fromApi) return fromApi;
+
+  const explicit = originFromConfiguredUrl(
+    readEnv("NEXT_PUBLIC_DJANGO_ORIGIN") || readEnv("API_PROXY_TARGET"),
+  );
+  if (explicit) return explicit;
+
   if (typeof window !== "undefined") {
     const { protocol, hostname } = window.location;
-    if (hostname !== "localhost" && hostname !== "127.0.0.1") {
+    if (!isLoopbackHostname(hostname)) {
       return `${protocol}//${hostname}:8000`;
     }
-    // Prefer localhost to match Next remotePatterns + browser URL bar
-    return `${protocol}//localhost:8000`;
   }
-  return "http://localhost:8000";
+  return "http://127.0.0.1:8000";
 }
 
 /** Ensure any configured base ends with /api/v1 (never bare /api). */
@@ -220,8 +240,12 @@ export function resolveMediaUrl(url?: string | null): string | null {
         } else {
           return trimmed;
         }
-      } else {
+      } else if (isLoopbackHostname(parsed.hostname)) {
+        // Backend often emits http://127.0.0.1:8000/media/... via build_absolute_uri
         path = `${parsed.pathname}${parsed.search}`;
+      } else {
+        // Already an absolute Django/LAN/CDN media URL — keep host unless loopback
+        return trimmed;
       }
     } catch {
       return trimmed;

@@ -9,7 +9,7 @@ type MediaImageProps = Omit<ImageProps, "src"> & {
 
 /**
  * next/image wrapper for Django media.
- * - Resolves `/media/...` → `http://localhost:8000/media/...`
+ * - Resolves `/media/...` → `{NEXT_PUBLIC_API_URL origin}/media/...`
  * - Forces unoptimized for Django media (avoids /_next/image 400 and S3 redirect issues)
  */
 export function MediaImage({ src, unoptimized, alt, ...rest }: MediaImageProps) {
