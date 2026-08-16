@@ -41,6 +41,14 @@ export const teacherEndpoints = {
 export const contentEndpoints = {
   resources: () => withSlash("/content/resources"),
   resourceDetail: (id: string) => withSlash(`/content/resources/${encodeURIComponent(id)}`),
+  resourceStream: (id: string) =>
+    withSlash(`/content/resources/${encodeURIComponent(id)}/stream`),
+  resourceTimestamps: (id: string) =>
+    withSlash(`/content/resources/${encodeURIComponent(id)}/timestamps`),
+  resourceTimestampDetail: (resourceId: string, timestampId: string) =>
+    withSlash(
+      `/content/resources/${encodeURIComponent(resourceId)}/timestamps/${encodeURIComponent(timestampId)}`,
+    ),
 };
 
 /** Public site path for a course (not an API URL). */

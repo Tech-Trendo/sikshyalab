@@ -6,17 +6,13 @@
 import { normalizeApiRole } from "@/lib/auth-routes";
 import { courseEndpoints } from "@/lib/api-endpoints";
 import { resolveApiBase } from "@/lib/api-base";
+import { resolveMediaUrl } from "@/lib/media-url";
 import { handleDeactivatedHttpResponse } from "@/lib/account-deactivated";
 
 const API_BASE = resolveApiBase();
 
 const ACCESS_KEY = "shikshalab_access_token";
 const REFRESH_KEY = "shikshalab_refresh_token";
-
-export function getAccessToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(ACCESS_KEY) || localStorage.getItem("access_token");
-}
 
 export function setTokens(access: string, refresh?: string) {
   localStorage.setItem(ACCESS_KEY, access);
@@ -27,6 +23,11 @@ export function clearTokens() {
   localStorage.removeItem(ACCESS_KEY);
   localStorage.removeItem(REFRESH_KEY);
   localStorage.removeItem("access_token");
+}
+
+export function getAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(ACCESS_KEY) || localStorage.getItem("access_token");
 }
 
 export function getRefreshToken(): string | null {
@@ -45,6 +46,7 @@ export async function refreshAccessToken(): Promise<string | null> {
     try {
       const res = await fetch(`${API_BASE}/accounts/auth/token/refresh/`, {
         method: "POST",
+        credentials: "include",
         headers: { Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify({ refresh }),
       });
@@ -86,6 +88,7 @@ export async function authedFetch(path: string, init?: RequestInit): Promise<Res
   try {
     let token = getAccessToken();
     let res = await fetch(`${API_BASE}${path}`, {
+      credentials: "include",
       ...init,
       headers: buildHeaders(token, init?.headers),
     });
@@ -93,6 +96,7 @@ export async function authedFetch(path: string, init?: RequestInit): Promise<Res
       token = await refreshAccessToken();
       if (!token) return res;
       res = await fetch(`${API_BASE}${path}`, {
+        credentials: "include",
         ...init,
         headers: buildHeaders(token, init?.headers),
       });
@@ -206,6 +210,7 @@ export type ApiNotification = {
 async function apiFetch(path: string, init?: RequestInit): Promise<Response | null> {
   try {
     const res = await fetch(`${API_BASE}${path}`, {
+      credentials: "include",
       ...init,
       headers: { ...authHeaders(), ...(init?.headers || {}) },
     });
@@ -228,6 +233,7 @@ export async function apiLogin(email: string, password: string): Promise<{
   clearTokens();
   const res = await fetch(`${API_BASE}/accounts/auth/login/`, {
     method: "POST",
+    credentials: "include",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
@@ -596,16 +602,8 @@ export function mapApiUserToAuth(
     (typeof user.avatar === "string" ? user.avatar : "") ||
     "";
   let avatar = rawAvatar || undefined;
-  // Prefer same-origin /media proxy so avatars load through the Vite/Next rewrite.
   if (avatar) {
-    try {
-      const parsed = new URL(avatar, "http://localhost");
-      if (parsed.pathname.startsWith("/media/")) {
-        avatar = `${parsed.pathname}${parsed.search}`;
-      }
-    } catch {
-      /* keep original */
-    }
+    avatar = resolveMediaUrl(avatar) || avatar;
   }
   return {
     name,
@@ -711,9 +709,9 @@ export function mapApiNotification(n: ApiNotification) {
 }
 
 export function resolveNotificationsWsUrl(accessToken: string): string | null {
-  const env = (import.meta as { env?: { VITE_WS_URL?: string; VITE_DJANGO_ORIGIN?: string } }).env;
+  const env = (import.meta as { env?: { VITE_WS_URL?: string; VITE_DJANGO_ORIGIN?: string; VITE_API_URL?: string } }).env;
   const explicit = env?.VITE_WS_URL;
-  const origin = env?.VITE_DJANGO_ORIGIN || "http://127.0.0.1:8000";
+  const origin = env?.VITE_DJANGO_ORIGIN || env?.VITE_API_URL || "http://192.168.100.154:8000";
   let base = explicit;
   if (!base) {
     try {

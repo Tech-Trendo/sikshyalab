@@ -11,7 +11,7 @@ export function getWebUrl(): string {
   const fromEnv = import.meta.env.VITE_WEB_URL as string | undefined;
   if (typeof window !== "undefined") {
     const { protocol, hostname } = window.location;
-    const isLocal = hostname === "localhost" || hostname === "127.0.0.1";
+    const isLocal = hostname === "localhost" || hostname === "192.168.100.154";
     const lan = lanHost();
     if (lan && (hostname === lan || !isLocal)) {
       // Prefer same host as dashboard when on LAN; else configured LAN site host

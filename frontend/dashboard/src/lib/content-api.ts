@@ -6,13 +6,25 @@ import { authedFetch, getAccessToken } from "./api";
 
 import { resolveApiBase } from "./api-base";
 import { contentEndpoints } from "./api-endpoints";
+import {
+  normalizeVideoTimestamp,
+  normalizeVideoTimestampList,
+  type VideoTimestamp,
+} from "./video-timestamps";
+import type { SecureMediaKind } from "./signed-media";
+
+export type { SecureMediaKind };
 
 const API_BASE = resolveApiBase();
 
 async function parseBody<T>(res: Response): Promise<T | null> {
   try {
     const body = await res.json();
-    if (body && typeof body === "object" && "data" in body) return body.data as T;
+    // Only unwrap the standard envelope { success, message, data }.
+    // A bare DRF object that happens to have a `data` field must not be unwrapped.
+    if (body && typeof body === "object" && "data" in body && ("success" in body || "message" in body)) {
+      return body.data as T;
+    }
     return body as T;
   } catch {
     return null;
@@ -31,6 +43,7 @@ async function mutate<T>(path: string, method: string, body?: unknown): Promise<
   try {
     const res = await fetch(`${API_BASE}${path}`, {
       method,
+      credentials: "include",
       headers: authHeaders(body !== undefined),
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
@@ -75,36 +88,45 @@ export type PartResource = {
   id: string;
   part: string;
   title: string;
-  resource_type: "PDF" | "DOC" | "LINK" | "OTHER";
+  resource_type: "PDF" | "DOC" | "LINK" | "VIDEO" | "OTHER";
   file: string | null;
   external_url: string;
   order?: number;
   created_at: string;
   updated_at: string;
+  timestamps?: VideoTimestamp[] | unknown[];
 };
 
 function mapResourceType(type: "video" | "notes" | "pdf" | "other"): PartResource["resource_type"] {
   if (type === "pdf") return "PDF";
   if (type === "notes") return "DOC";
+  if (type === "video") return "VIDEO";
   return "OTHER";
 }
 
 async function multipartMutate<T>(path: string, method: string, form?: FormData): Promise<{ ok: boolean; data: T | null; detail?: string }> {
-  const res = await authedFetch(path, {
-    method,
-    body: form,
-    // Do not set Content-Type: the browser adds the multipart boundary.
-    headers: { Accept: "application/json" },
-  });
-  if (!res) return { ok: false, data: null, detail: "Network error" };
-  const data = await parseBody<T>(res);
-  if (!res.ok) {
-    const detail = data && typeof data === "object" && "detail" in (data as object)
-      ? String((data as { detail?: unknown }).detail)
-      : `Request failed (${res.status})`;
-    return { ok: false, data: null, detail };
+  try {
+    const res = await authedFetch(path, {
+      method,
+      body: form,
+      // Do not set Content-Type: the browser adds the multipart boundary.
+      headers: { Accept: "application/json" },
+    });
+    if (!res) return { ok: false, data: null, detail: "Network error" };
+    const data = await parseBody<T>(res);
+    if (!res.ok) {
+      const detail =
+        data && typeof data === "object" && "detail" in (data as object)
+          ? String((data as { detail?: unknown }).detail)
+          : data && typeof data === "object" && "message" in (data as object)
+            ? String((data as { message?: unknown }).message)
+            : `Request failed (${res.status})`;
+      return { ok: false, data: null, detail };
+    }
+    return { ok: true, data };
+  } catch {
+    return { ok: false, data: null, detail: "Network error" };
   }
-  return { ok: true, data };
 }
 
 function mapPartTypeToApi(type: "video" | "pdf" | "notes"): string {
@@ -185,4 +207,65 @@ export const contentApi = {
   },
 
   deletePartResource: (id: string) => multipartMutate<void>(contentEndpoints.resourceDetail(id), "DELETE"),
+
+  /**
+   * Probe the stream endpoint with cookie credentials only (no token in URL / no Bearer).
+   * Used to surface session-expired UI before mounting media elements.
+   */
+  probeResourceStream: async (
+    resourceId: string,
+  ): Promise<{ ok: boolean; unauthorized: boolean; detail?: string }> => {
+    try {
+      const path = `/api/v1${contentEndpoints.resourceStream(resourceId)}`;
+      const res = await fetch(path, {
+        method: "GET",
+        credentials: "include",
+        headers: { Accept: "*/*", Range: "bytes=0-0" },
+      });
+      if (res.status === 401 || res.status === 403) {
+        return { ok: false, unauthorized: true, detail: "Session expired, please log in again" };
+      }
+      // 200 / 206 Partial Content are success for Range probes
+      if (res.ok || res.status === 206) return { ok: true, unauthorized: false };
+      return { ok: false, unauthorized: false, detail: `Stream unavailable (${res.status})` };
+    } catch {
+      return { ok: false, unauthorized: false, detail: "Network error" };
+    }
+  },
+
+  listResourceTimestamps: async (resourceId: string): Promise<{ ok: boolean; data: VideoTimestamp[]; detail?: string }> => {
+    try {
+      const res = await authedFetch(contentEndpoints.resourceTimestamps(resourceId), {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+      if (!res) return { ok: false, data: [], detail: "Network error" };
+      const data = await parseBody<unknown>(res);
+      if (!res.ok) {
+        return {
+          ok: false,
+          data: [],
+          detail: `Request failed (${res.status})`,
+        };
+      }
+      return { ok: true, data: normalizeVideoTimestampList(data) };
+    } catch {
+      return { ok: false, data: [], detail: "Network error" };
+    }
+  },
+
+  createResourceTimestamp: async (
+    resourceId: string,
+    payload: { time_seconds: number; label: string },
+  ): Promise<{ ok: boolean; data: VideoTimestamp | null; detail?: string }> => {
+    const result = await mutate<unknown>(contentEndpoints.resourceTimestamps(resourceId), "POST", {
+      time_seconds: Math.max(0, Math.floor(payload.time_seconds)),
+      label: payload.label.trim(),
+    });
+    if (!result.ok) return { ok: false, data: null, detail: result.detail };
+    return { ok: true, data: normalizeVideoTimestamp(result.data) };
+  },
+
+  deleteResourceTimestamp: (resourceId: string, timestampId: string) =>
+    mutate<void>(contentEndpoints.resourceTimestampDetail(resourceId, timestampId), "DELETE"),
 };

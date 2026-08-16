@@ -11,6 +11,13 @@ export function resolveApiBase(): string {
   if (fromEnv?.startsWith("http")) {
     return fromEnv.replace(/\/$/, "");
   }
-  const origin = (env?.VITE_DJANGO_ORIGIN || "http://127.0.0.1:8000").replace(/\/$/, "");
-  return `${origin}/api/v1`;
+  const origin = (env?.VITE_DJANGO_ORIGIN || env?.VITE_API_URL || "http://192.168.100.154:8000").replace(
+    /\/$/,
+    "",
+  );
+  try {
+    return `${new URL(origin.includes("://") ? origin : `http://${origin}`).origin}/api/v1`;
+  } catch {
+    return "http://192.168.100.154:8000/api/v1";
+  }
 }

@@ -58,7 +58,7 @@ export async function apiList<T>(path: string): Promise<T[]> {
       const url = `${API_BASE}${path}${join}page=${page}&page_size=${pageSize}`;
       const controller = new AbortController();
       const t = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-      const res = await fetch(url, { headers: headers(), signal: controller.signal });
+      const res = await fetch(url, { headers: headers(), signal: controller.signal, credentials: "include" });
       clearTimeout(t);
       if (!res.ok) return all.length ? all : [];
       const raw = await res.json().catch(() => null);
@@ -95,7 +95,7 @@ async function apiGet<T>(path: string): Promise<T | null> {
   try {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-    const res = await fetch(`${API_BASE}${path}`, { headers: headers(), signal: controller.signal });
+    const res = await fetch(`${API_BASE}${path}`, { headers: headers(), signal: controller.signal, credentials: "include" });
     clearTimeout(t);
     if (!res.ok) return null;
     return parseBody<T>(res);
@@ -126,6 +126,7 @@ export async function apiMutateDetailed<T>(
     const t = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     const res = await fetch(`${API_BASE}${path}`, {
       method,
+      credentials: "include",
       headers: headers(),
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: controller.signal,
@@ -349,6 +350,7 @@ export type ApiPartResourceRow = {
   external_url?: string;
   created_at: string;
   updated_at?: string;
+  timestamps?: unknown;
 };
 export type ApiAssignmentRow = {
   id: string;

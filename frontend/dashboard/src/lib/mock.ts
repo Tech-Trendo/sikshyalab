@@ -29,6 +29,19 @@ export type Course = {
   chapters: {
     id?: string;
     title: string;
+    video?: {
+      id?: string;
+      title?: string;
+      url?: string;
+      duration?: number;
+      parts?: {
+        id?: string | number;
+        title: string;
+        start_time: number;
+        end_time: number;
+        order?: number;
+      }[];
+    } | null;
     parts: {
       id?: string;
       title: string;

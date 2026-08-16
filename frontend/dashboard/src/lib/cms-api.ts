@@ -71,6 +71,7 @@ async function cmsFetch(path: string, init?: RequestInit): Promise<Response | nu
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     let res = await fetch(`${API_BASE}/cms${path}`, {
+      credentials: "include",
       ...init,
       headers: buildHeaders(token, init?.headers),
       signal: controller.signal,
@@ -83,6 +84,7 @@ async function cmsFetch(path: string, init?: RequestInit): Promise<Response | nu
         const controller2 = new AbortController();
         const t2 = setTimeout(() => controller2.abort(), REQUEST_TIMEOUT_MS);
         res = await fetch(`${API_BASE}/cms${path}`, {
+          credentials: "include",
           ...init,
           headers: buildHeaders(token, init?.headers),
           signal: controller2.signal,
@@ -94,6 +96,7 @@ async function cmsFetch(path: string, init?: RequestInit): Promise<Response | nu
         const controller3 = new AbortController();
         const t3 = setTimeout(() => controller3.abort(), REQUEST_TIMEOUT_MS);
         res = await fetch(`${API_BASE}/cms${path}`, {
+          credentials: "include",
           ...init,
           headers: { Accept: "application/json" },
           signal: controller3.signal,

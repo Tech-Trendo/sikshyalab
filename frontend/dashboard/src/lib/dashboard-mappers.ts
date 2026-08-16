@@ -83,6 +83,19 @@ type MappedCourse = {
   chapters: {
     id?: string;
     title: string;
+    video?: {
+      id?: string;
+      title?: string;
+      url?: string;
+      duration?: number;
+      parts?: {
+        id?: string | number;
+        title: string;
+        start_time: number;
+        end_time: number;
+        order?: number;
+      }[];
+    } | null;
     parts: {
       id?: string;
       title: string;
@@ -549,21 +562,41 @@ export function mapDashboardBundle(bundle: DashboardBundle): MappedDashboardData
     const chaptersRaw = (L.chaptersByCourse.get(String(c.id)) || []).sort(
       (a, b) => (a.order ?? 0) - (b.order ?? 0),
     );
-    const chapters = chaptersRaw.map((ch) => ({
-      id: String(ch.id),
-      title: ch.title,
-      parts: (ch.parts || [])
-        .sort((a, b) => ((a as { order?: number }).order ?? 0) - ((b as { order?: number }).order ?? 0))
-        .map((p) => ({
-          id: String(p.id),
-          title: p.title,
-          type: mapPartType(p.content_type),
-          duration: formatDuration(p.video_duration_seconds, p.estimated_minutes),
-          videoUrl: p.video_url || "",
-          notes: p.notes || "",
-          description: p.description || "",
-        })),
-    }));
+    const chapters = chaptersRaw.map((ch) => {
+      const videoId = ch.video?.id ? String(ch.video.id) : null;
+      const videoParts = (ch.video?.parts || []).map((vp, i) => ({
+        id: vp.id ?? `vp-${i}`,
+        title: vp.title,
+        start_time: Number(vp.start_time ?? vp.startTime ?? 0),
+        end_time: Number(vp.end_time ?? vp.endTime ?? 0),
+        order: Number(vp.order ?? i + 1),
+      }));
+      return {
+        id: String(ch.id),
+        title: ch.title,
+        video: ch.video
+          ? {
+              id: ch.video.id ? String(ch.video.id) : undefined,
+              title: ch.video.title,
+              url: ch.video.url || "",
+              duration: ch.video.duration,
+              parts: videoParts,
+            }
+          : null,
+        parts: (ch.parts || [])
+          .filter((p) => !videoId || String(p.id) !== videoId)
+          .sort((a, b) => ((a as { order?: number }).order ?? 0) - ((b as { order?: number }).order ?? 0))
+          .map((p) => ({
+            id: String(p.id),
+            title: p.title,
+            type: mapPartType(p.content_type),
+            duration: formatDuration(p.video_duration_seconds, p.estimated_minutes),
+            videoUrl: p.video_url || "",
+            notes: p.notes || "",
+            description: p.description || "",
+          })),
+      };
+    });
 
     const weeks = c.duration_weeks;
     const hours = c.duration_hours;

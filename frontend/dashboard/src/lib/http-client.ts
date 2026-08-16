@@ -74,6 +74,7 @@ export async function httpRequest<T>(
   let res: Response;
   try {
     res = await fetch(url, {
+      credentials: "include",
       ...fetchInit,
       headers: {
         Accept: "application/json",

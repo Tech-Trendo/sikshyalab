@@ -528,7 +528,16 @@ export async function runDashboardSync(action: SyncAction): Promise<boolean | st
         console.error("[createAssignment] course not found", action.course);
         return false;
       }
-      const teacherUuid = action.teacher ? M.teacherByName.get(action.teacher) : undefined;
+      let teacherUuid = action.teacher ? M.teacherByName.get(action.teacher) : undefined;
+      if (!teacherUuid && action.teacher) {
+        const needle = action.teacher.trim().toLowerCase();
+        for (const [name, id] of M.teacherByName.entries()) {
+          if (name.trim().toLowerCase() === needle) {
+            teacherUuid = id;
+            break;
+          }
+        }
+      }
       const status = action.portalOpen ? "PUBLISHED" : "DRAFT";
       const created = await apiMutateDetailed<{ id?: string }>("/assignments/assignments/", "POST", {
         title: action.title,
