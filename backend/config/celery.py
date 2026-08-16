@@ -41,6 +41,14 @@ app.conf.beat_schedule = {
         "task": "cms.sync_partners",
         "schedule": crontab(hour=3, minute=15),
     },
+    "videos-cleanup-stuck-processing": {
+        "task": "apps.videos.tasks.cleanup_stuck_processing",
+        "schedule": crontab(hour="*/2", minute=0),
+    },
+    "content-cleanup-stuck-resource-processing": {
+        "task": "content.cleanup_stuck_resource_processing",
+        "schedule": crontab(hour="*/2", minute=20),
+    },
 }
 
 

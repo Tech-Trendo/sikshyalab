@@ -42,8 +42,6 @@ backend/
 │   └── urls.py            # Root URLs (admin, docs, API)
 ├── requirements/          # base / development / production deps
 ├── scripts/               # Utility & seed scripts
-├── docker-compose.yml
-├── Dockerfile
 └── manage.py
 ```
 
@@ -59,8 +57,9 @@ Interactive docs: **`/api/docs/`** (Swagger) · **`/api/redoc/`** · schema at *
 | Auth | JWT (`djangorestframework-simplejwt`) |
 | API schema | `drf-spectacular` (OpenAPI 3) |
 | Filters | `django-filter` |
-| DB | SQLite (dev default) / PostgreSQL 16 (Docker / prod) |
-| Cache / broker | Redis + Celery |
+| DB | SQLite (dev default) / PostgreSQL 16 (local / prod) |
+| Media | Local disk or S3-compatible **DataHub** (`USE_S3=true`) |
+| Cache / broker | Redis + Celery (optional; install on host) |
 | Static | WhiteNoise |
 | Config | `python-decouple` (`.env`) |
 | Audit | `django-auditlog` |
@@ -100,7 +99,12 @@ copy .env.example .env   # Windows
 # cp .env.example .env   # macOS / Linux
 ```
 
-Edit `.env` and set PostgreSQL credentials (`DB_ENGINE`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`). PostgreSQL is required.
+Edit `.env` and set:
+
+- PostgreSQL credentials (`DB_ENGINE`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`) when not using SQLite
+- **DataHub / S3** media (`USE_S3=true`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_STORAGE_BUCKET_NAME`, `AWS_S3_ENDPOINT_URL`, …)
+
+This project does **not** use Docker. Run Django locally and point media at your DataHub S3 bucket.
 
 ### 3. Migrate & seed
 
@@ -132,14 +136,22 @@ cd backend
 
 Uses `config.settings.test` (SQLite in-memory). CI: `.github/workflows/backend-tests.yml`.
 
-### Docker Compose
+### Media (DataHub S3)
 
-```bash
-copy .env.example .env
-docker compose up --build
+Set in `.env` (see `.env.example`):
+
+```env
+USE_S3=true
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+AWS_STORAGE_BUCKET_NAME=...
+AWS_S3_ENDPOINT_URL=https://your-datahub-s3-endpoint
+AWS_S3_REGION_NAME=us-east-1
+AWS_S3_ADDRESSING_STYLE=path
+AWS_QUERYSTRING_AUTH=true
 ```
 
-Starts **web** (Gunicorn + migrate + collectstatic), **Postgres 16**, and **Redis 7**. App listens on port **8000**.
+With `USE_S3=true`, uploads go to DataHub via `django-storages`. Leave `USE_S3=false` to store files under `backend/media/` on disk.
 
 ## Auth
 
@@ -234,12 +246,12 @@ Standard JSON envelope from many endpoints:
 ## Production notes
 
 1. **Secrets** — set a strong `SECRET_KEY`; never commit `.env`.
-2. **Settings** — use `DJANGO_SETTINGS_MODULE=config.settings.production` (Compose does this).
-3. **Database** — Postgres via `DB_*` env vars; enable connection pooling / `DB_CONN_MAX_AGE`.
+2. **Settings** — use `DJANGO_SETTINGS_MODULE=config.settings.production`.
+3. **Database** — Postgres via `DB_*` env vars (install Postgres on the host or a managed DB); enable connection pooling / `DB_CONN_MAX_AGE`.
 4. **HTTPS** — `SECURE_SSL_REDIRECT`, HSTS, and secure cookies are configured in production settings.
-5. **Static / media** — `collectstatic` + WhiteNoise for static; serve `MEDIA_ROOT` via CDN or object storage (`django-storages`) in real deployments.
+5. **Static / media** — `collectstatic` + WhiteNoise for static; set `USE_S3=true` + DataHub `AWS_*` for object storage (`django-storages`).
 6. **CORS** — set `CORS_ALLOWED_ORIGINS` to your frontend origin(s); disable `CORS_ALLOW_ALL_ORIGINS` in production.
-7. **Redis / Celery** — required for async tasks and recommended caching in prod.
+7. **Redis / Celery** — optional for async tasks; install Redis on the host if needed (not via Docker).
 8. **Sentry** — optional `SENTRY_DSN` for error tracking.
 9. **Migrations** — always run `migrate` before traffic; prefer zero-downtime expand/contract for large schema changes.
 10. **Backups** — schedule Postgres backups and media backups.

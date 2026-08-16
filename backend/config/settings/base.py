@@ -7,6 +7,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from decouple import Csv, config
+from botocore.client import Config as BotocoreConfig
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -69,6 +70,7 @@ LOCAL_APPS = [
     "apps.notifications.apps.NotificationsConfig",
     "apps.analytics.apps.AnalyticsConfig",
     "apps.tasks.apps.TasksConfig",
+    "apps.videos.apps.VideosConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -176,13 +178,16 @@ AWS_S3_ENDPOINT_URL = config("AWS_S3_ENDPOINT_URL", default="")
 AWS_S3_REGION_NAME = config("AWS_S3_REGION_NAME", default="")
 AWS_S3_ADDRESSING_STYLE = config("AWS_S3_ADDRESSING_STYLE", default="path")
 AWS_S3_SIGNATURE_VERSION = config("AWS_S3_SIGNATURE_VERSION", default="s3v4")
-# Empty ACL is required for buckets with "Bucket owner enforced" / ACLs disabled.
+# Empty ACL is required for buckets with "Bucket owner enforced" / ACLs disabled
+# (typical for DataHub / AWS S3; do not use Docker MinIO defaults here).
 _aws_acl = config("AWS_DEFAULT_ACL", default="")
 AWS_DEFAULT_ACL = _aws_acl if _aws_acl else None
 AWS_LOCATION = config("AWS_LOCATION", default="")
 AWS_QUERYSTRING_AUTH = config("AWS_QUERYSTRING_AUTH", default=True, cast=bool)
-AWS_QUERYSTRING_EXPIRE = config("AWS_QUERYSTRING_EXPIRE", default=3600, cast=int)
+AWS_QUERYSTRING_EXPIRE = config("AWS_QUERYSTRING_EXPIRE", default=900, cast=int)
 AWS_S3_FILE_OVERWRITE = config("AWS_S3_FILE_OVERWRITE", default=False, cast=bool)
+# Short-lived media URLs returned by /content/resources/.../signed-url/ (10–15 min)
+MEDIA_SIGNED_URL_EXPIRE = config("MEDIA_SIGNED_URL_EXPIRE", default=900, cast=int)
 AWS_S3_OBJECT_PARAMETERS = {
     "CacheControl": config("AWS_S3_CACHE_CONTROL", default="max-age=86400"),
 }
@@ -194,17 +199,58 @@ MEDIA_MAX_VIDEO_BYTES = config("MEDIA_MAX_VIDEO_BYTES", default=200 * 1024 * 102
 MEDIA_MAX_AUDIO_BYTES = config("MEDIA_MAX_AUDIO_BYTES", default=30 * 1024 * 1024, cast=int)
 MEDIA_MAX_UPLOAD_BYTES = config("MEDIA_MAX_UPLOAD_BYTES", default=20 * 1024 * 1024, cast=int)
 
+MEDIA_ALLOWED_VIDEO_EXTENSIONS = config(
+    "MEDIA_ALLOWED_VIDEO_EXTENSIONS",
+    default="mp4,mov,mkv,webm,m4v",
+    cast=Csv(),
+)
+
+VIDEO_CRF = config("VIDEO_CRF", default=23, cast=int)
+VIDEO_PRESET = config("VIDEO_PRESET", default="medium")
+VIDEO_CODEC = config("VIDEO_CODEC", default="libx264")
+AUDIO_CODEC = config("AUDIO_CODEC", default="aac")
+AUDIO_BITRATE = config("AUDIO_BITRATE", default="128k")
+# Cap height for web streaming (720 keeps bandwidth low; set 1080 for higher quality).
+VIDEO_MAX_HEIGHT = config("VIDEO_MAX_HEIGHT", default=720, cast=int)
+# Keep uncompressed original after compression (retry / audit). Set false to delete.
+VIDEO_KEEP_ORIGINAL = config("VIDEO_KEEP_ORIGINAL", default=True, cast=bool)
+VIDEO_MAX_BYTES = config("VIDEO_MAX_BYTES", default=250 * 1024 * 1024, cast=int)
+VIDEO_UPLOAD_TMP_DIR = config("VIDEO_UPLOAD_TMP_DIR", default=str(BASE_DIR / "tmp" / "videos"))
+VIDEO_DOWNLOAD_URL_EXPIRY_SECONDS = config(
+    "VIDEO_DOWNLOAD_URL_EXPIRY_SECONDS", default=3600, cast=int
+)
+
 if USE_S3:
     STORAGES = {
         "default": {
             "BACKEND": "apps.common.storage.MediaStorage",
+            "OPTIONS": {
+                "access_key": AWS_ACCESS_KEY_ID,
+                "secret_key": AWS_SECRET_ACCESS_KEY,
+                "bucket_name": AWS_STORAGE_BUCKET_NAME,
+                "endpoint_url": AWS_S3_ENDPOINT_URL or None,
+                "region_name": AWS_S3_REGION_NAME or None,
+                "default_acl": AWS_DEFAULT_ACL,
+                "querystring_auth": AWS_QUERYSTRING_AUTH,
+                "querystring_expire": AWS_QUERYSTRING_EXPIRE,
+                "file_overwrite": AWS_S3_FILE_OVERWRITE,
+                "location": AWS_LOCATION or "",
+                "object_parameters": AWS_S3_OBJECT_PARAMETERS,
+                "custom_domain": None,
+                "client_config": BotocoreConfig(
+                    signature_version=AWS_S3_SIGNATURE_VERSION or "s3v4",
+                    s3={"addressing_style": AWS_S3_ADDRESSING_STYLE or "path"},
+                ),
+            },
         },
         "staticfiles": {
             "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
         },
     }
     # Keep MEDIA_URL as the API media gateway so auth gating still applies.
-    # AuthenticatedMediaView redirects to a signed S3 URL after checks.
+    # AuthenticatedMediaView streams object bytes (HTTP 200) from the bucket.
+    # PostgreSQL stores only relative keys; binaries live in S3. Uploads are
+    # also mirrored under local MEDIA_ROOT so DEBUG static() can serve them.
 else:
     STORAGES = {
         "default": {
@@ -229,18 +275,18 @@ CORS_ALLOWED_ORIGINS = config(
     default="http://localhost:8081,http://127.0.0.1:8081,http://localhost:5173,http://127.0.0.1:5173",
     cast=Csv(),
 )
+# Required so the browser sends the httpOnly media cookie on cross-origin API/media calls
 CORS_ALLOW_CREDENTIALS = config("CORS_ALLOW_CREDENTIALS", default=True, cast=bool)
-CORS_ALLOW_HEADERS = [
-    "accept",
-    "accept-encoding",
-    "authorization",
-    "content-type",
-    "dnt",
-    "origin",
-    "user-agent",
-    "x-csrftoken",
-    "x-requested-with",
-]
+
+# ---------------------------------------------------------------------------
+# Media session cookie (httpOnly) — used only by /content/resources/<id>/stream/
+# Regular APIs continue to use Authorization: Bearer JWT.
+# ---------------------------------------------------------------------------
+MEDIA_COOKIE_NAME = config("MEDIA_COOKIE_NAME", default="sl_media_session")
+MEDIA_COOKIE_SAMESITE = config("MEDIA_COOKIE_SAMESITE", default="Lax")
+MEDIA_COOKIE_SECURE = config("MEDIA_COOKIE_SECURE", default=False, cast=bool)
+# Align with access-token lifetime (seconds). Refresh endpoint rotates the cookie.
+MEDIA_COOKIE_MAX_AGE = config("MEDIA_COOKIE_MAX_AGE", default=3600, cast=int)
 
 # ---------------------------------------------------------------------------
 # Django REST Framework
@@ -475,6 +521,27 @@ LOGGING = {
         "apps.common.middleware": {
             "handlers": ["console", "file"],
             "level": "INFO",
+            "propagate": False,
+        },
+        # Keep S3 SDK signature dumps out of the console
+        "botocore": {
+            "handlers": ["console", "file"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "boto3": {
+            "handlers": ["console", "file"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "s3transfer": {
+            "handlers": ["console", "file"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "urllib3": {
+            "handlers": ["console", "file"],
+            "level": "WARNING",
             "propagate": False,
         },
     },

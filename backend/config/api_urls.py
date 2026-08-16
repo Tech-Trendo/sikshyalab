@@ -33,5 +33,6 @@ urlpatterns = [
     path("notifications/", include("apps.notifications.urls")),
     path("analytics/", include("apps.analytics.urls")),
     path("tasks/", include("apps.tasks.urls")),
+    path("", include("apps.videos.urls")),
     path("exports/", include("apps.common.urls")),
 ]

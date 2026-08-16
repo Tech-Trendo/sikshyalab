@@ -48,6 +48,9 @@ SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SAMESITE = "Lax"
+MEDIA_COOKIE_SECURE = True
+# Use None when SPA and API are different sites over HTTPS (requires Secure above).
+MEDIA_COOKIE_SAMESITE = config("MEDIA_COOKIE_SAMESITE", default="Lax")
 X_FRAME_OPTIONS = "DENY"
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 
@@ -55,6 +58,7 @@ SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 # CORS — explicit origins only
 # ---------------------------------------------------------------------------
 CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", cast=Csv())
 
 # ---------------------------------------------------------------------------
@@ -87,8 +91,8 @@ EMAIL_BACKEND = config(
 )
 
 # ---------------------------------------------------------------------------
-# Media — served via AuthenticatedMediaView (local disk or S3 signed redirect).
-# Set USE_S3=true + AWS_* in .env for DataHub / S3-compatible object storage.
+# Media — served via AuthenticatedMediaView (local disk or streamed from DataHub S3).
+# Set USE_S3=true + AWS_* in .env for your DataHub / S3-compatible bucket (no Docker).
 # WhiteNoise only covers STATIC files, not MEDIA.
 # ---------------------------------------------------------------------------
 

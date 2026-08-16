@@ -12,7 +12,7 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 
-from apps.common.media_access import AuthenticatedMediaView
+from apps.common.media_access import AuthenticatedMediaView, debug_media_serve
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -30,15 +30,24 @@ urlpatterns = [
     ),
     # API v1 (canonical) — only mount once to keep URL namespaces unique
     path("api/v1/", include("config.api_urls")),
-    # Media — always gated (public CMS assets open; lesson files require auth)
-    re_path(r"^media/(?P<path>.*)$", AuthenticatedMediaView.as_view(), name="media"),
 ]
 
 if settings.DEBUG:
+    # Serve uploaded CMS/media files from MEDIA_ROOT during development.
+    urlpatterns += static(
+        settings.MEDIA_URL,
+        document_root=settings.MEDIA_ROOT,
+        view=debug_media_serve,
+    )
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
     if "debug_toolbar" in settings.INSTALLED_APPS:
         urlpatterns += [path("__debug__/", include("debug_toolbar.urls"))]
+
+# Production (and DEBUG fallback when the file is not on disk yet): gated S3/disk view.
+urlpatterns += [
+    re_path(r"^media/(?P<path>.*)$", AuthenticatedMediaView.as_view(), name="media"),
+]
 
 admin.site.site_header = "ShikshaLab Administration"
 admin.site.site_title = "ShikshaLab Admin"

@@ -96,8 +96,10 @@ $RECYCLE.BIN/
 celerybeat-schedule
 celerybeat.pid
 
-# Docker
+# Legacy ignore (Docker removed from this project)
 docker-compose.override.yml
+Dockerfile
+docker-compose.yml
 
 # Misc
 *.bak

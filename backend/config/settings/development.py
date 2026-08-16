@@ -36,7 +36,26 @@ DATABASES = {
 # ---------------------------------------------------------------------------
 # CORS — permissive in development
 # ---------------------------------------------------------------------------
-CORS_ALLOW_ALL_ORIGINS = config("CORS_ALLOW_ALL_ORIGINS", default=True, cast=bool)
+# Do NOT use CORS_ALLOW_ALL_ORIGINS with credentials — browsers reject that combo.
+# Explicit origins + credentials so Set-Cookie / credentialed fetches work.
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = config(
+    "CORS_ALLOWED_ORIGINS",
+    default=(
+        "http://localhost:8081,http://127.0.0.1:8081,"
+        "http://localhost:5173,http://127.0.0.1:5173,"
+        "http://192.168.100.154:8081,http://192.168.100.154:5173,"
+        "http://192.168.100.250:8081,http://192.168.100.250:5173"
+    ),
+    cast=Csv(),
+)
+# Any LAN device running the SPA (HTTP only — cookie still won't cross-site without HTTPS).
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^http://192\.168\.\d{1,3}\.\d{1,3}:(5173|8081|3000)$",
+    r"^http://10\.\d{1,3}\.\d{1,3}\.\d{1,3}:(5173|8081|3000)$",
+    r"^http://172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}:(5173|8081|3000)$",
+]
 
 # ---------------------------------------------------------------------------
 # CSRF — trust LAN origins (login / session edges)
@@ -47,6 +66,7 @@ CSRF_TRUSTED_ORIGINS = config(
         "http://localhost:8081,http://127.0.0.1:8081,"
         "http://localhost:5173,http://127.0.0.1:5173,"
         "http://192.168.100.154:8081,http://192.168.100.154:5173,"
+        "http://192.168.100.250:8081,http://192.168.100.250:5173,"
         "http://192.168.100.154:8000"
     ),
     cast=Csv(),
@@ -56,11 +76,19 @@ CSRF_TRUSTED_ORIGINS = config(
 STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
 
 # ---------------------------------------------------------------------------
-# Logging — more verbose in development
+# Logging — verbose for our apps only (not botocore/boto3 S3 noise)
 # ---------------------------------------------------------------------------
-LOGGING["root"]["level"] = "DEBUG"  # noqa: F405
+LOGGING["root"]["level"] = "INFO"  # noqa: F405
 LOGGING["loggers"]["apps"]["level"] = "DEBUG"  # noqa: F405
 LOGGING["handlers"]["console"]["level"] = "DEBUG"  # noqa: F405
+LOGGING["loggers"].update(  # noqa: F405
+    {
+        "botocore": {"handlers": ["console", "file"], "level": "WARNING", "propagate": False},
+        "boto3": {"handlers": ["console", "file"], "level": "WARNING", "propagate": False},
+        "s3transfer": {"handlers": ["console", "file"], "level": "WARNING", "propagate": False},
+        "urllib3": {"handlers": ["console", "file"], "level": "WARNING", "propagate": False},
+    }
+)
 # Avoid Windows file-lock rollover noise: plain append in local dev.
 LOGGING["handlers"]["file"] = {  # noqa: F405
     "class": "logging.FileHandler",
