@@ -32,7 +32,7 @@ const djangoTarget = (
   process.env.VITE_API_PROXY_TARGET ||
   envFromDotenv("VITE_DJANGO_ORIGIN") ||
   envFromDotenv("VITE_API_PROXY_TARGET") ||
-  "http://127.0.0.1:8000"
+  "http://192.168.100.154:8000"
 ).replace(/\/$/, "");
 
 export default defineConfig({
@@ -67,6 +67,9 @@ export default defineConfig({
           changeOrigin: true,
         },
       },
+    },
+    optimizeDeps: {
+      include: ["pdfjs-dist"],
     },
   },
 });
