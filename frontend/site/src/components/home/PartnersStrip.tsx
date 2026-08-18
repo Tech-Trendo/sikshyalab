@@ -1,18 +1,26 @@
 "use client";
 
-import { SectionContainer } from "@/components/brand/Section";
+import { SectionContainer, SectionSwoosh } from "@/components/brand/Section";
 import RevealOnScroll from "@/components/motion/RevealOnScroll";
 import { usePublicData } from "@/hooks/usePublicData";
 
 /** Partner logos from CMS `/cms/partners/` — logos only on the homepage. */
-export function PartnersStrip() {
+export function PartnersStrip({ heading }: { heading?: string }) {
   const { partners } = usePublicData();
   if (!partners.length) return null;
 
   return (
-    <section className="border-y border-brand-border bg-white py-8 lg:py-10">
+    <section className="border-y border-brand-border bg-white py-8 lg:py-12">
       <SectionContainer>
         <RevealOnScroll variant="fade-up">
+          {heading ? (
+            <div className="mb-8 text-center">
+              <h2 className="font-heading text-2xl font-bold text-[#181818] sm:text-[1.75rem]">
+                {heading}
+              </h2>
+              <SectionSwoosh className="mx-auto mt-2" />
+            </div>
+          ) : null}
           <ul className="grid grid-cols-2 items-stretch gap-4 sm:grid-cols-3 lg:grid-cols-6 lg:gap-5">
             {partners.map((item) => {
               const inner = (

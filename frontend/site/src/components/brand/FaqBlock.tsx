@@ -22,28 +22,9 @@ type FaqBlockProps = {
   partnerLogos?: { id: string | number; logo: string; name?: string }[];
 };
 
-/** Accent for FAQ text tabs — brand navy; bell stays orange */
+/** Accent for FAQ text tabs — brand navy */
 const ACCENT = "#1B3A6B";
 const ACCENT_SOFT = "#EAF0F6";
-
-function BellDecor() {
-  return (
-    <div className="faq-bell-decor pointer-events-none absolute -right-1 -top-4 z-[3] hidden h-[72px] w-[72px] sm:block sm:right-2 sm:top-0 lg:-right-4 lg:-top-2">
-      <svg viewBox="0 0 64 64" fill="none" className="h-full w-full drop-shadow-md" aria-hidden>
-        <path
-          d="M32 8c-9 0-15 7-15 16v10l-5 8h40l-5-8V24c0-9-6-16-15-16z"
-          fill="#F8B81F"
-        />
-        <path d="M32 8c-9 0-15 7-15 16v10l-5 8h40l-5-8V24c0-9-6-16-15-16z" fill="#F5A623" opacity="0.35" />
-        <circle cx="32" cy="8" r="4" fill="#E0941B" />
-        <path d="M26 52a6 6 0 0012 0z" fill="#E0941B" />
-      </svg>
-      <span className="absolute -right-1 -top-1 flex h-[26px] w-[26px] items-center justify-center rounded-full bg-[#EF5464] font-heading text-xs font-bold text-white shadow-md">
-        1
-      </span>
-    </div>
-  );
-}
 
 function FaqAccordion({ items }: { items: FaqItem[] }) {
   const [openIndex, setOpenIndex] = useState(0);
@@ -51,7 +32,6 @@ function FaqAccordion({ items }: { items: FaqItem[] }) {
 
   return (
     <div className="relative z-[2] flex flex-1 flex-col gap-4">
-      <BellDecor />
       {visible.map((item, i) => {
         const open = openIndex === i;
         return (

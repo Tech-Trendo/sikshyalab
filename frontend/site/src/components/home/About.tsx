@@ -14,6 +14,7 @@ import {
 import RevealOnScroll, { THEME_DELAY, STAGGER_STEP } from "@/components/motion/RevealOnScroll";
 import RingDotDecor from "@/components/RingDotDecor";
 import { usePublicData } from "@/hooks/usePublicData";
+import { parseAboutCms } from "@/lib/about-cms";
 
 /** Brand tokens (logo: navy) */
 const NAVY = "#1B3A6B";
@@ -35,13 +36,22 @@ function AboutBlob({ className }: { className?: string }) {
 
 /** About section — ShikshaLab navy. Hidden until CMS about content exists. */
 export function About({ showCta = true }: { showCta?: boolean }) {
-  const { aboutPage, aboutBenefits, settings } = usePublicData();
-  const points = aboutBenefits.slice(0, 2);
-  const title = aboutPage?.title?.trim();
-  const body = aboutPage?.content?.trim() || settings?.tagline?.trim() || "";
+  const { aboutPage, settings } = usePublicData();
+  const cms = parseAboutCms(aboutPage?.content);
+  const title = aboutPage?.title?.trim() || "";
+  const intro = cms.intro.trim();
+  const fallbackBody = settings?.tagline?.trim() || "";
+  const contentLines = intro
+    ? intro.split(/\n+/).map((line) => line.replace(/^[-•*]\s*/, "").trim()).filter(Boolean)
+    : [];
+  const body = contentLines[0] || fallbackBody;
+  const points = contentLines.slice(1, 3);
+
   if (!title && !body) return null;
 
   const image = aboutPage?.featured_image || DEFAULT_IMAGE;
+  // Home teaser stays short; About page shows the full intro paragraph.
+  const bodyDisplay = showCta && body.length > 220 ? `${body.slice(0, 220).trim()}…` : body;
 
   return (
     <Section className="!overflow-visible !bg-white">
@@ -94,33 +104,35 @@ export function About({ showCta = true }: { showCta?: boolean }) {
             {title || "About ShikshaLab"}
           </h2>
           <SectionSwoosh className="mx-0" />
-          <p
-            className="mt-4 max-w-lg font-body text-[16px] leading-[1.75] text-[#181818] sm:text-[18px]"
-          >
-            {body.slice(0, 220)}
-          </p>
+          {bodyDisplay ? (
+            <p className="mt-4 max-w-lg font-body text-[16px] leading-[1.75] text-[#181818] sm:text-[18px]">
+              {bodyDisplay}
+            </p>
+          ) : null}
 
-          <ul className="mt-7 space-y-4">
-            {points.map((item, i) => (
-              <RevealOnScroll
-                key={item}
-                variant="fade-up"
-                delay={THEME_DELAY.cta + i * STAGGER_STEP}
-              >
-                <li
-                  className="flex items-center gap-3 font-body text-[16px] font-semibold"
-                  style={{ color: INK }}
+          {points.length > 0 ? (
+            <ul className="mt-7 space-y-4">
+              {points.map((item, i) => (
+                <RevealOnScroll
+                  key={item}
+                  variant="fade-up"
+                  delay={THEME_DELAY.cta + i * STAGGER_STEP}
                 >
-                  <Check
-                    className="h-5 w-5 shrink-0 text-[#181818]"
-                    strokeWidth={2.75}
-                    aria-hidden
-                  />
-                  {item}
-                </li>
-              </RevealOnScroll>
-            ))}
-          </ul>
+                  <li
+                    className="flex items-center gap-3 font-body text-[16px] font-semibold"
+                    style={{ color: INK }}
+                  >
+                    <Check
+                      className="h-5 w-5 shrink-0 text-[#181818]"
+                      strokeWidth={2.75}
+                      aria-hidden
+                    />
+                    {item}
+                  </li>
+                </RevealOnScroll>
+              ))}
+            </ul>
+          ) : null}
 
           {showCta ? (
             <RevealOnScroll variant="fade-up" delay={THEME_DELAY.cta + 0.25} className="mt-9">
