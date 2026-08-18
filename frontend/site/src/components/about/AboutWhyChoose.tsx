@@ -187,8 +187,34 @@ function SoftRing({
 }
 
 /** Why choose — white bg, site typography, animated ornaments. */
-export function AboutWhyChoose() {
+export function AboutWhyChoose({
+  items,
+}: {
+  items?: Array<{ title: string; description?: string; body?: string; icon?: string }>;
+}) {
   const reduceMotion = useReducedMotion() ?? false;
+  const cmsCards = (items || [])
+    .map((item) => ({
+      title: item.title.trim(),
+      body: String(item.description || item.body || "").trim(),
+      icon: item.icon?.trim() || "",
+    }))
+    .filter((item) => item.title || item.body);
+  const cards = cmsCards.length
+    ? cmsCards.map((item, i) => ({
+        ...item,
+        Icon: CARDS[i % CARDS.length].Icon,
+        iconColor: CARDS[i % CARDS.length].iconColor,
+        iconBg: CARDS[i % CARDS.length].iconBg,
+      }))
+    : CARDS.map((c) => ({
+        title: c.title,
+        body: c.body,
+        icon: "",
+        Icon: c.Icon,
+        iconColor: c.iconColor,
+        iconBg: c.iconBg,
+      }));
 
   return (
     <section className="sl-section relative overflow-hidden bg-white">
@@ -263,7 +289,7 @@ export function AboutWhyChoose() {
         </RevealOnScroll>
 
         <RevealStagger className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8">
-          {CARDS.map((box) => (
+          {cards.map((box) => (
             <motion.article
               key={box.title}
               variants={staggerItem}
@@ -271,14 +297,23 @@ export function AboutWhyChoose() {
               transition={{ duration: 0.28, ease: [0.215, 0.61, 0.355, 1] }}
               className="rounded-[10px] border border-brand-border/70 bg-white px-7 py-10 text-center shadow-brand-soft sm:px-8 sm:py-11"
             >
-              <motion.span
-                className="mx-auto mb-6 grid h-[80px] w-[80px] place-items-center rounded-full"
-                style={{ backgroundColor: box.iconBg, color: box.iconColor }}
-                whileHover={reduceMotion ? undefined : { scale: 1.08, rotate: -4 }}
-                transition={{ type: "spring", stiffness: 260, damping: 18 }}
-              >
-                <box.Icon className="h-9 w-9" strokeWidth={1.6} />
-              </motion.span>
+              {box.icon ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={box.icon}
+                  alt=""
+                  className="mx-auto mb-6 h-[80px] w-[80px] rounded-full object-cover"
+                />
+              ) : (
+                <motion.span
+                  className="mx-auto mb-6 grid h-[80px] w-[80px] place-items-center rounded-full"
+                  style={{ backgroundColor: box.iconBg, color: box.iconColor }}
+                  whileHover={reduceMotion ? undefined : { scale: 1.08, rotate: -4 }}
+                  transition={{ type: "spring", stiffness: 260, damping: 18 }}
+                >
+                  <box.Icon className="h-9 w-9" strokeWidth={1.6} />
+                </motion.span>
+              )}
               <h3 className="font-secondary text-lg font-bold text-brand-navy-dark sm:text-xl">
                 {box.title}
               </h3>
