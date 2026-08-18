@@ -18,9 +18,9 @@ export function BlogContent({ content, className }: Props) {
     <div
       className={cn(
         "prose prose-neutral max-w-none overflow-x-auto text-black",
-        "prose-headings:font-secondary prose-headings:text-brand-navy-dark",
-        "prose-a:text-brand-orange prose-strong:text-brand-navy-dark",
-        "prose-p:text-black prose-li:text-black prose-li:marker:text-brand-navy",
+        "prose-headings:font-secondary prose-headings:text-black",
+        "prose-a:text-brand-orange prose-strong:text-black",
+        "prose-p:text-black prose-li:text-black prose-li:marker:text-black",
         "prose-pre:overflow-x-auto prose-table:block prose-table:w-full prose-table:overflow-x-auto",
         className,
       )}
