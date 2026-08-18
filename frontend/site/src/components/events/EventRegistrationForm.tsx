@@ -142,7 +142,7 @@ export function EventRegistrationForm({
         <button
           type="submit"
           disabled={busy}
-          className="sl-hero-btn w-full !h-12 !min-h-12"
+          className="sl-hero-btn sl-hero-btn--yellow w-full !h-12 !min-h-12"
         >
           {busy ? "Submitting…" : "Register now"}
         </button>

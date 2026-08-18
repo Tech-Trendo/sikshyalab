@@ -92,7 +92,7 @@ export function EventCard({
               e.stopPropagation();
               onRegister?.();
             }}
-            className="sl-card-cta sl-card-cta--primary"
+            className="sl-card-cta sl-card-cta--primary sl-event-card-cta"
           >
             Register now
           </button>

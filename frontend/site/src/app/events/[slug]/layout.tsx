@@ -1,13 +1,20 @@
 import type { Metadata } from "next";
-import { getPageMetadata } from "@/lib/seo";
+import { fetchPublicEvent } from "@/lib/public-api";
+import { metadataFromEntity, stripToPlain } from "@/lib/seo";
 
 type Props = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  return getPageMetadata(`/events/${slug}`, {
-    title: slug.replace(/-/g, " "),
-    description: "ShikshaLab event details and registration.",
+  const event = await fetchPublicEvent(slug);
+  const title = event?.title || slug.replace(/-/g, " ");
+  const description =
+    stripToPlain(event?.description) || "ShikshaLab event details and registration.";
+  return metadataFromEntity(event, {
+    title,
+    description,
+    path: `/events/${slug}`,
+    image: event?.og_image || event?.cover_image || null,
   });
 }
 

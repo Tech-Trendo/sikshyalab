@@ -6,7 +6,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Calendar, Clock, MapPin, ArrowLeft } from "lucide-react";
 import { SiteLayout, PageHero } from "@/components/layout/SiteLayout";
 import { EventRegistrationForm } from "@/components/events/EventRegistrationForm";
+import { MediaImage } from "@/components/media/MediaImage";
 import { fetchPublicEvent } from "@/lib/public-api";
+import { resolveMediaUrl } from "@/lib/env";
 
 export default function EventDetailPage({
   params,
@@ -52,6 +54,10 @@ export default function EventDetailPage({
     hour: "2-digit",
     minute: "2-digit",
   });
+  const coverSrc =
+    resolveMediaUrl(event.cover_image) ||
+    (typeof event.cover_image === "string" ? event.cover_image.trim() : "") ||
+    null;
 
   return (
     <SiteLayout flushTop>
@@ -69,24 +75,38 @@ export default function EventDetailPage({
             >
               <ArrowLeft className="h-4 w-4" /> Back to events
             </Link>
-            <article className="card-brand p-6 sm:p-8">
-              <div className="flex flex-wrap gap-4 text-sm text-brand-body">
-                <span className="inline-flex items-center gap-1.5">
-                  <Calendar className="h-4 w-4 text-brand-navy" /> {dateLabel}
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Clock className="h-4 w-4 text-brand-navy" /> {timeLabel}
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <MapPin className="h-4 w-4 text-brand-navy" /> {event.location}
-                </span>
-              </div>
-              <div className="mt-6 space-y-4 text-[15px] leading-relaxed text-brand-body">
-                {(event.description || "Join us for this ShikshaLab event.")
-                  .split(/\n+/)
-                  .map((para) => (
-                    <p key={para.slice(0, 24)}>{para}</p>
-                  ))}
+            <article className="card-brand overflow-hidden">
+              {coverSrc ? (
+                <div className="relative aspect-[16/9] w-full shrink-0 overflow-hidden bg-[#E8EEF6]">
+                  <MediaImage
+                    src={coverSrc}
+                    alt={event.title}
+                    fill
+                    sizes="(max-width: 1024px) 100vw, 60vw"
+                    className="object-cover"
+                    priority
+                  />
+                </div>
+              ) : null}
+              <div className="p-6 sm:p-8">
+                <div className="flex flex-wrap gap-4 text-sm text-black">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Calendar className="h-4 w-4 text-black" /> {dateLabel}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Clock className="h-4 w-4 text-black" /> {timeLabel}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <MapPin className="h-4 w-4 text-black" /> {event.location}
+                  </span>
+                </div>
+                <div className="mt-6 space-y-4 text-[15px] leading-relaxed text-black">
+                  {(event.description || "Join us for this ShikshaLab event.")
+                    .split(/\n+/)
+                    .map((para) => (
+                      <p key={para.slice(0, 24)}>{para}</p>
+                    ))}
+                </div>
               </div>
             </article>
           </div>
