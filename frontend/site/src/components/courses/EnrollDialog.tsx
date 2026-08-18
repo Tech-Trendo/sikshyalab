@@ -13,6 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { submitContactMessage } from "@/lib/public-api";
+import { RecaptchaCheckbox } from "@/components/recaptcha/RecaptchaCheckbox";
+import { isRecaptchaConfigured } from "@/lib/recaptcha";
 
 type Props = {
   open: boolean;
@@ -27,6 +29,9 @@ export function EnrollDialog({ open, onOpenChange, courseTitle }: Props) {
   const [phone, setPhone] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
+  const [captchaKey, setCaptchaKey] = useState(0);
+  const captchaOn = isRecaptchaConfigured();
 
   useEffect(() => {
     if (!open) return;
@@ -42,6 +47,8 @@ export function EnrollDialog({ open, onOpenChange, courseTitle }: Props) {
     setEmail("");
     setPhone("");
     setMessage("");
+    setRecaptchaToken(null);
+    setCaptchaKey((k) => k + 1);
   };
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -50,28 +57,45 @@ export function EnrollDialog({ open, onOpenChange, courseTitle }: Props) {
       toast.error("Please fill in name, email, phone, and message");
       return;
     }
-    setBusy(true);
-    const result = await submitContactMessage({
-      name: name.trim(),
-      email: email.trim(),
-      phone: phone.trim(),
-      subject: courseTitle
-        ? `Enrollment request: ${courseTitle}`
-        : "Course enrollment request",
-      message: message.trim(),
-    });
-    if (result.ok) {
-      toast.success("Enrollment request sent", {
-        description: "We'll get back to you within 24 hours.",
-      });
-      reset();
-      onOpenChange(false);
-    } else {
-      toast.error("Could not send request", {
-        description: result.message || "Please try again or contact us directly.",
-      });
+    if (captchaOn && !recaptchaToken) {
+      toast.error("Please complete the reCAPTCHA checkbox");
+      return;
     }
-    setBusy(false);
+    setBusy(true);
+    try {
+      const payload: Parameters<typeof submitContactMessage>[0] = {
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        subject: courseTitle
+          ? `Enrollment request: ${courseTitle}`
+          : "Course enrollment request",
+        message: message.trim(),
+      };
+      if (recaptchaToken) payload.recaptcha_token = recaptchaToken;
+      const result = await submitContactMessage(payload);
+      if (result.ok) {
+        toast.success("Enrollment request sent", {
+          description: "We'll get back to you within 24 hours.",
+        });
+        reset();
+        onOpenChange(false);
+      } else {
+        toast.error("Could not send request", {
+          description: result.message || "Please try again or contact us directly.",
+        });
+        setRecaptchaToken(null);
+        setCaptchaKey((k) => k + 1);
+      }
+    } catch (err) {
+      toast.error("Security check failed", {
+        description: err instanceof Error ? err.message : "Please try again.",
+      });
+      setRecaptchaToken(null);
+      setCaptchaKey((k) => k + 1);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -153,10 +177,16 @@ export function EnrollDialog({ open, onOpenChange, courseTitle }: Props) {
             />
           </div>
           <div className="sm:col-span-2">
+            <RecaptchaCheckbox
+              resetKey={captchaKey}
+              onTokenChange={setRecaptchaToken}
+            />
+          </div>
+          <div className="sm:col-span-2">
             <button
               type="submit"
-              disabled={busy}
-              className="sl-hero-btn w-full !h-12 !min-h-12"
+              disabled={busy || (captchaOn && !recaptchaToken)}
+              className="sl-hero-btn w-full !h-12 !min-h-12 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {busy ? "Sending…" : "Submit enrollment"}
             </button>

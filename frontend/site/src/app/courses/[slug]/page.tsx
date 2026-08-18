@@ -27,6 +27,13 @@ function mapCurriculumParts(
         title: p.title,
         type,
         duration: p.duration || undefined,
+        topics: (p.topics || [])
+          .slice()
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          .map((t) => ({
+            id: t.id != null ? String(t.id) : undefined,
+            title: t.title,
+          })),
       };
     }),
   }));

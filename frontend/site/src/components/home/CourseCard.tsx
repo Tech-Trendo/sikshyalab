@@ -144,7 +144,7 @@ export function CourseCard({
               e.stopPropagation();
               setEnrollOpen(true);
             }}
-            className="sl-card-cta sl-card-cta--primary"
+            className="sl-card-cta sl-card-cta--primary sl-enroll-cta"
           >
             Enroll now
           </button>

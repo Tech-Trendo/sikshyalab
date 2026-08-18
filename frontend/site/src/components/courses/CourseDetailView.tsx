@@ -1,26 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  BookOpen,
-  Check,
-  ChevronDown,
   Clock,
-  Facebook,
-  Instagram,
-  Linkedin,
-  Lock,
-  PlayCircle,
   Star,
-  Twitter,
-  Users,
 } from "lucide-react";
 import { CourseCard } from "@/components/home/CourseCard";
-import { PrimaryButton } from "@/components/brand/Buttons";
+import { CourseCurriculum } from "@/components/courses/CourseCurriculum";
 import { EnrollDialog } from "@/components/courses/EnrollDialog";
+import { UpcomingClassesCard } from "@/components/courses/UpcomingClassesCard";
+import { WhyThisCourseCard } from "@/components/courses/WhyThisCourseCard";
+import { CourseTestimonialsSection } from "@/components/courses/CourseTestimonialsSection";
+import { IndustryCertificatePromo } from "@/components/home/IndustryCertificatePromo";
+import { CourseFaqSection } from "@/components/courses/CourseFaqSection";
 import { EventCard } from "@/components/events/EventCard";
 import { EventRegisterDialog } from "@/components/events/EventRegisterDialog";
 import { MediaImage } from "@/components/media/MediaImage";
@@ -41,22 +36,6 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "gallery", label: "Gallery" },
 ];
 
-function lessonCount(course: Course) {
-  if (!Array.isArray(course.chapters)) return 0;
-  return course.chapters.reduce((n, ch) => n + (Array.isArray(ch.parts) ? ch.parts.length : 0), 0);
-}
-
-function moduleDuration(parts: Course["chapters"][0]["parts"]) {
-  const mins = parts.reduce((sum, p) => {
-    if (!p.duration) return sum;
-    const [m, s] = p.duration.split(":").map(Number);
-    return sum + (m || 0) + (s || 0) / 60;
-  }, 0);
-  if (mins < 1) return `${parts.length * 15} min`;
-  if (mins < 60) return `${Math.round(mins)} min`;
-  return `${Math.floor(mins / 60)}h ${Math.round(mins % 60)}m`;
-}
-
 function Stars({ rating }: { rating: number }) {
   const filled = Math.round(rating);
   return (
@@ -74,85 +53,6 @@ function Stars({ rating }: { rating: number }) {
   );
 }
 
-function CourseAccordion({ course }: { course: Course }) {
-  const [open, setOpen] = useState(0);
-  const chapters = Array.isArray(course.chapters) ? course.chapters : [];
-
-  return (
-    <div className="mt-4 overflow-hidden rounded-lg border border-brand-border/60">
-      {chapters.map((ch, i) => {
-        const parts = Array.isArray(ch.parts) ? ch.parts : [];
-        const isOpen = open === i;
-        return (
-          <div
-            key={ch.title}
-            className={cn(
-              "border-b border-brand-border/60 last:border-b-0",
-              isOpen ? "bg-brand-shade" : "bg-white",
-            )}
-          >
-            <button
-              type="button"
-              className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left transition-all duration-300 ease-in-out hover:bg-brand-orange/5 sm:px-5"
-              onClick={() => setOpen(isOpen ? -1 : i)}
-              aria-expanded={isOpen}
-            >
-              <span className="font-semibold text-[#181818]">
-                {ch.title}
-              </span>
-              <span className="flex shrink-0 items-center gap-3 text-sm text-brand-body">
-                <span className="hidden sm:inline">
-                  {parts.length} lessons · {moduleDuration(parts)}
-                </span>
-                <ChevronDown
-                  className={cn(
-                    "h-5 w-5 text-[#181818] transition-transform duration-300 ease-in-out",
-                    isOpen && "rotate-180",
-                  )}
-                  aria-hidden
-                />
-              </span>
-            </button>
-            <AnimatePresence initial={false}>
-              {isOpen && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.3, ease: "easeInOut" }}
-                  className="overflow-hidden"
-                >
-                  <ul className="px-2 pb-3 sm:px-3">
-                    {parts.map((p) => (
-                      <li
-                        key={p.title}
-                        className="flex items-center justify-between gap-3 rounded-md px-3 py-2.5 text-sm text-[#181818] transition-all duration-300 ease-in-out hover:bg-brand-orange/5"
-                      >
-                        <span className="inline-flex min-w-0 items-center gap-2">
-                          <PlayCircle className="h-4 w-4 shrink-0 text-brand-orange" aria-hidden />
-                          <span className="truncate">{p.title}</span>
-                        </span>
-                        <span className="inline-flex shrink-0 items-center gap-2 text-xs text-brand-body">
-                          {p.duration || p.type.toUpperCase()}
-                          {i === 0 ? (
-                            <PlayCircle className="h-3.5 w-3.5 text-[#181818]" aria-hidden />
-                          ) : (
-                            <Lock className="h-3.5 w-3.5 text-brand-body/50" aria-hidden />
-                          )}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 function CourseInfoTab({
   course,
   expanded,
@@ -164,13 +64,12 @@ function CourseInfoTab({
 }) {
   const desc = course.description;
   const short = desc.length > 220 ? `${desc.slice(0, 220)}…` : desc;
-  const tags = [course.category, course.level, course.mode, "Certificate"];
 
   return (
     <div className="space-y-10">
       <div>
         <h4 className="font-secondary text-lg font-bold text-[#181818]">Course Description</h4>
-        <p className="mt-3 text-[15px] leading-relaxed text-brand-body">
+        <p className="mt-3 text-justify text-[15px] leading-relaxed text-brand-body">
           {expanded ? desc : short}
         </p>
         {desc.length > 220 && (
@@ -184,49 +83,7 @@ function CourseInfoTab({
         )}
       </div>
 
-      <div>
-        <h4 className="font-secondary text-lg font-bold text-[#181818]">What Will You Learn?</h4>
-        <ul className="mt-4 grid gap-3 sm:grid-cols-2">
-          {course.outcomes.map((o) => (
-            <li key={o} className="flex items-start gap-3 text-[15px] text-[#181818]">
-              <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand-orange text-white">
-                <Check className="h-3 w-3" strokeWidth={3} aria-hidden />
-              </span>
-              {o}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div>
-        <h4 className="font-secondary text-lg font-bold text-[#181818]">Course Content</h4>
-        {Array.isArray(course.chapters) && course.chapters.length ? (
-          <>
-            <p className="mt-1 text-sm text-brand-body">
-              {course.chapters.length} modules · {lessonCount(course)} lessons
-            </p>
-            <CourseAccordion course={course} />
-          </>
-        ) : (
-          <p className="mt-2 text-sm text-brand-body">
-            Curriculum outline will be published soon. Contact us to learn more about the syllabus.
-          </p>
-        )}
-      </div>
-
-      <div>
-        <h4 className="font-secondary text-lg font-bold text-[#181818]">Tags</h4>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {tags.map((t) => (
-            <span
-              key={t}
-              className="rounded-full bg-brand-shade px-3 py-1 text-xs font-semibold text-[#181818]"
-            >
-              {t}
-            </span>
-          ))}
-        </div>
-      </div>
+      <CourseCurriculum course={course} />
     </div>
   );
 }
@@ -242,7 +99,6 @@ export function CourseDetailView({
   const [descOpen, setDescOpen] = useState(false);
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [registerFor, setRegisterFor] = useState<{ slug: string; title: string } | null>(null);
-  const lessons = useMemo(() => lessonCount(course), [course]);
 
   const courseEventsQ = useQuery({
     queryKey: ["public", "events", "by-course", course.slug],
@@ -288,8 +144,6 @@ export function CourseDetailView({
 
   const sidebarRows = [
     { icon: Clock, label: "Duration", value: course.duration },
-    { icon: BookOpen, label: "Lessons", value: String(lessons) },
-    { icon: Users, label: "Students", value: course.students.toLocaleString() },
     { icon: Star, label: "Level", value: course.level },
   ] as const;
 
@@ -520,7 +374,8 @@ export function CourseDetailView({
 
           {/* Sidebar ~35% sticky */}
           <RevealOnScroll variant="fade-up" delay={0.3} className="lg:self-start">
-            <aside className="sticky top-24 rounded-brand-lg bg-white p-6 shadow-brand-soft transition-shadow duration-300 hover:shadow-brand-med">
+            <div className="sticky top-24 space-y-4">
+              <aside className="rounded-brand-lg bg-white p-6 shadow-brand-soft transition-shadow duration-300 hover:shadow-brand-med">
               <div className="relative mb-5 aspect-[16/9] overflow-hidden rounded-xl bg-[#E8EEF6]">
                 <MediaImage
                   key={course.cover || "placeholder"}
@@ -560,30 +415,28 @@ export function CourseDetailView({
                 ))}
               </ul>
 
-              <div className="mt-5">
-                <PrimaryButton type="button" onClick={() => setEnrollOpen(true)}>
+              <div className="mt-5 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setEnrollOpen(true)}
+                  className="sl-hero-btn sl-hero-btn--yellow sl-enroll-cta !h-11 !min-h-11 !px-5 !text-sm"
+                >
                   Enroll Now
-                </PrimaryButton>
+                </button>
               </div>
-
-              <p className="mt-6 text-xs font-semibold uppercase tracking-[0.14em] text-brand-body">
-                Share On:
-              </p>
-              <div className="mt-3 flex gap-2">
-                {[Facebook, Twitter, Linkedin, Instagram].map((Icon, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    className="grid h-10 w-10 place-items-center rounded-full bg-brand-shade text-[#181818] transition-all duration-300 ease-in-out hover:-translate-y-0.5 hover:bg-brand-orange hover:text-white"
-                    aria-label="Share"
-                  >
-                    <Icon className="h-4 w-4" />
-                  </button>
-                ))}
-              </div>
-            </aside>
+              </aside>
+              <UpcomingClassesCard courseId={course.id} courseTitle={course.title} />
+              <WhyThisCourseCard
+                title={course.whyThisCourseTitle}
+                highlights={course.highlights}
+              />
+            </div>
           </RevealOnScroll>
         </div>
+
+        <CourseTestimonialsSection course={course} />
+
+        <IndustryCertificatePromo courseTitle={course.title} className="mt-16 lg:mt-20" />
 
         {/* Related */}
         {related.length > 0 && (
@@ -607,6 +460,8 @@ export function CourseDetailView({
           </section>
         )}
       </SectionContainer>
+
+      <CourseFaqSection faqs={course.faqs} />
 
       <EnrollDialog
         open={enrollOpen}
