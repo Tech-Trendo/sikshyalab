@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, GraduationCap, BookOpen, Layers, Clock, Banknote,
   Award, ClipboardList, Globe, Bell, LogOut, Settings, Kanban, FileText, FolderOpen,
   User, CheckCheck, Info, CheckCircle2, AlertTriangle, Settings2, MessageSquareQuote, Sparkles,
-  Menu, CalendarDays, Newspaper, Mail, Briefcase, Handshake, ExternalLink,
+  Menu, CalendarDays, Newspaper, Mail, Handshake, ExternalLink,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,7 @@ const groups: Record<Role, { label: string; items: { to: string; label: string; 
         { to: "/dashboard/teachers", label: "Teachers", icon: GraduationCap },
         { to: "/dashboard/courses", label: "Courses", icon: BookOpen },
         { to: "/dashboard/categories", label: "Categories", icon: FolderOpen },
+        { to: "/dashboard/resources", label: "Resources", icon: FolderOpen },
         { to: "/dashboard/batches", label: "Batches", icon: Layers },
         { to: "/dashboard/shifts", label: "Shifts", icon: Clock },
         { to: "/dashboard/assignments", label: "Assignments", icon: ClipboardList },
@@ -52,7 +53,6 @@ const groups: Record<Role, { label: string; items: { to: string; label: string; 
         { to: "/dashboard/blog", label: "Blog", icon: Newspaper },
         { to: "/dashboard/gallery", label: "Gallery", icon: FolderOpen },
         { to: "/dashboard/partners", label: "Partners", icon: Handshake },
-        { to: "/dashboard/careers", label: "Careers", icon: Briefcase },
         { to: "/dashboard/messages", label: "Messages", icon: Mail },
         { to: "/dashboard/reviews", label: "Reviews", icon: MessageSquareQuote },
         { to: "/dashboard/testimonials", label: "Testimonials", icon: Sparkles },

@@ -125,7 +125,7 @@ type DashboardData = {
   assignBatchesToTeacher: (teacherName: string, batchIds: string[]) => Promise<boolean>;
   importTeachers: (rows: string[][]) => number;
 
-  addCourse: (c: Omit<Course, "chapters" | "cover" | "rating" | "students" | "outcomes" | "tagline" | "description"> & Partial<Course> & { coverFile?: File }) => Promise<boolean>;
+  addCourse: (c: Omit<Course, "chapters" | "cover" | "rating" | "students" | "outcomes" | "tagline" | "description"> & Partial<Course> & { coverFile?: File; ogFile?: File }) => Promise<boolean>;
   updateCourse: (slug: string, patch: Partial<Course>) => void;
   /** Apply state already persisted by a dedicated content endpoint without re-syncing the course. */
   updateCourseLocal: (slug: string, patch: Partial<Course>) => void;
@@ -636,12 +636,16 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         students: c.students ?? 0,
         instructor: c.instructor || "Unassigned",
         cover: c.cover && !c.cover.startsWith("blob:") ? c.cover : "",
-        tagline: c.tagline || c.title,
+        tagline: c.title,
         description: c.description || "",
         outcomes: c.outcomes || [],
         metaTitle: c.metaTitle,
         metaDescription: c.metaDescription,
         metaKeywords: c.metaKeywords,
+        ogImage: c.ogImage,
+        whyThisCourseTitle: c.whyThisCourseTitle,
+        highlights: c.highlights,
+        faqs: c.faqs,
         isPublished: true,
         chapters: c.chapters || [{ title: "Getting Started", parts: [{ title: "Welcome", type: "video", duration: "10:00" }] }],
       },
@@ -652,36 +656,63 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       type: "createCourse",
       payload: {
         title: c.title,
-        short_description: c.tagline || c.title,
+        slug: slug,
+        short_description: c.title,
         description: c.description || "",
         price: c.price,
         level: String(c.level || "Beginner").toUpperCase(),
         enrollment_type,
         duration_weeks: durationWeeks,
-        learning_outcomes: c.outcomes || [],
+        learning_outcomes: [],
         is_published: true,
         status: "PUBLISHED",
         is_featured: false,
         language: "English",
-        // Resolved to UUIDs inside createCourse sync (not hardcoded paths/ids)
         category_names: categoryList,
         instructor_name: c.instructor || "",
+        ...(c.whyThisCourseTitle != null ? { why_this_course_title: c.whyThisCourseTitle } : {}),
+        ...(Array.isArray(c.highlights) && c.highlights.length ? { highlights: c.highlights } : {}),
+        ...(Array.isArray(c.faqs) && c.faqs.length
+          ? {
+              faqs: c.faqs.map((f, i) => ({
+                question: f.question,
+                answer: f.answer,
+                order: i,
+              })),
+            }
+          : {}),
+        ...(c.metaTitle?.trim() ? { meta_title: c.metaTitle.trim() } : {}),
+        ...(c.metaDescription?.trim() ? { meta_description: c.metaDescription.trim() } : {}),
       },
     });
     if (created) {
       const realSlug = typeof created === "string" ? created : slug;
       // Upload thumbnail AFTER the course exists on the API
-      if (c.coverFile) {
-        const { uploadCourseThumbnail } = await import("@/lib/api");
-        const uploaded = await uploadCourseThumbnail(realSlug, c.coverFile);
-        if (uploaded) {
-          setCourses((prev) =>
-            prev.map((row) =>
-              row.slug === slug || row.slug === realSlug
-                ? { ...row, slug: realSlug, cover: uploaded }
-                : row,
-            ),
-          );
+      if (c.coverFile || c.ogFile) {
+        const { uploadCourseOgImage, uploadCourseThumbnail } = await import("@/lib/api");
+        if (c.coverFile) {
+          const uploaded = await uploadCourseThumbnail(realSlug, c.coverFile);
+          if (uploaded) {
+            setCourses((prev) =>
+              prev.map((row) =>
+                row.slug === slug || row.slug === realSlug
+                  ? { ...row, slug: realSlug, cover: uploaded }
+                  : row,
+              ),
+            );
+          }
+        }
+        if (c.ogFile) {
+          const uploadedOg = await uploadCourseOgImage(realSlug, c.ogFile);
+          if (uploadedOg) {
+            setCourses((prev) =>
+              prev.map((row) =>
+                row.slug === slug || row.slug === realSlug
+                  ? { ...row, slug: realSlug, ogImage: uploadedOg }
+                  : row,
+              ),
+            );
+          }
         }
       }
       await refreshData();

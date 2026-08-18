@@ -21,6 +21,7 @@ import {
   apiMutateDetailed,
   type ApiCategoryRow,
 } from "@/lib/dashboard-api";
+import { useDirtyForm } from "@/hooks/useDirtyForm";
 
 export const Route = createFileRoute("/dashboard/categories")({
   component: CategoriesPage,
@@ -37,6 +38,7 @@ function CategoriesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ApiCategoryRow | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [formBaseline, setFormBaseline] = useState<typeof emptyForm | null>(null);
   const [busy, setBusy] = useState(false);
   const [rows, setRows] = useState<ApiCategoryRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,23 +55,27 @@ function CategoriesPage() {
 
   useEffect(() => {
     void load();
-  }, [courseCategories]);
+  }, []);
 
   const paged = paginate(rows, page);
   const activeCount = rows.filter((r) => r.is_active !== false).length;
+  const categoryDirty = useDirtyForm(form, formBaseline, Boolean(editing));
 
   const openAdd = () => {
     setEditing(null);
     setForm(emptyForm);
+    setFormBaseline(null);
     setFormOpen(true);
   };
 
   const openEdit = (row: ApiCategoryRow) => {
     setEditing(row);
-    setForm({
+    const next = {
       name: row.name,
       is_active: row.is_active !== false,
-    });
+    };
+    setForm(next);
+    setFormBaseline(next);
     setFormOpen(true);
   };
 
@@ -242,7 +248,7 @@ function CategoriesPage() {
             <Button variant="outline" onClick={() => setFormOpen(false)}>
               Cancel
             </Button>
-            <Button disabled={busy} onClick={() => void save()}>
+            <Button disabled={busy || Boolean(editing && !categoryDirty)} onClick={() => void save()}>
               {busy ? "Saving…" : editing ? "Save changes" : "Create category"}
             </Button>
           </DialogFooter>

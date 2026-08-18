@@ -12,8 +12,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { paginate } from "@/lib/dashboard-utils";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useDirtyForm } from "@/hooks/useDirtyForm";
 
 export const Route = createFileRoute("/dashboard/seo")({
   component: SeoPageView,
@@ -32,17 +33,26 @@ function SeoPageView() {
     ogImage: "",
     robots: "index,follow",
   });
+  const [homeBaseline, setHomeBaseline] = useState<typeof homeForm | null>(null);
+  const [editingBaseline, setEditingBaseline] = useState<SeoPage | null>(null);
+  const homeDirty = useDirtyForm(homeForm, homeBaseline, Boolean(homeBaseline));
+  const seoEditDirty = useDirtyForm(editing, editingBaseline, Boolean(editing));
+
+  const homeHydrated = useRef(false);
 
   useEffect(() => {
-    if (!home) return;
-    setHomeForm({
+    if (homeHydrated.current || !home) return;
+    homeHydrated.current = true;
+    const next = {
       title: home.title || "",
       description: home.description || "",
       keywords: home.keywords || "",
       canonical: home.canonical || home.path || "/",
       ogImage: home.ogImage || "",
       robots: home.robots || "index,follow",
-    });
+    };
+    setHomeForm(next);
+    setHomeBaseline(next);
   }, [home]);
 
   const paged = paginate(seoPages, page);
@@ -69,6 +79,7 @@ function SeoPageView() {
       ),
     });
     toast.success("SEO settings saved");
+    setHomeBaseline(homeForm);
   };
 
   return (
@@ -117,7 +128,7 @@ function SeoPageView() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Button variant="outline" size="sm" onClick={() => setEditing({ ...p })}>
+                    <Button variant="outline" size="sm" onClick={() => { setEditing({ ...p }); setEditingBaseline({ ...p }); }}>
                       Edit
                     </Button>
                   </TableCell>
@@ -192,7 +203,7 @@ function SeoPageView() {
               />
             </div>
             <div className="md:col-span-2">
-              <Button className="btn-highlight" onClick={saveHome}>
+              <Button className="btn-highlight" disabled={!homeDirty} onClick={saveHome}>
                 Save SEO settings
               </Button>
             </div>
@@ -255,6 +266,7 @@ function SeoPageView() {
               Cancel
             </Button>
             <Button
+              disabled={!seoEditDirty}
               onClick={() => {
                 if (!editing) return;
                 updateSeoPage(editing.path, editing);

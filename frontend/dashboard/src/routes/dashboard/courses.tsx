@@ -14,7 +14,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { BookOpen, Users, Banknote, Star, Plus, Edit, Eye, Trash2 } from "lucide-react";
 import { inr, type Course } from "@/lib/mock";
-import { paginate } from "@/lib/dashboard-utils";
+import { paginate, slugify } from "@/lib/dashboard-utils";
+import { courseSlugError, normalizeCourseSlug } from "@/lib/course-slug";
 import { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -34,7 +35,13 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { CourseImagePicker } from "@/components/dashboard/CourseImagePicker";
-import { uploadCourseThumbnail } from "@/lib/api";
+import { FormTabNav } from "@/components/dashboard/FormTabNav";
+import { SeoFieldsPanel } from "@/components/dashboard/SeoFieldsPanel";
+import { HighlightsListEditor } from "@/components/dashboard/HighlightsListEditor";
+import { FaqsListEditor, type FaqDraft } from "@/components/dashboard/FaqsListEditor";
+import { useDirtyForm } from "@/hooks/useDirtyForm";
+import { courseEditorApi, type CourseHighlightInput } from "@/lib/course-editor-api";
+import { uploadCourseOgImage, uploadCourseThumbnail } from "@/lib/api";
 import { courseEndpoints } from "@/lib/api-endpoints";
 import { apiMutateDetailed } from "@/lib/dashboard-api";
 import { useReviewsQuery } from "@/hooks/useCmsQueries";
@@ -53,18 +60,38 @@ export const Route = createFileRoute("/dashboard/courses")({
 
 
 const csvHeaders = ["slug", "title", "level", "mode", "duration", "price"];
+
+function nestedHighlights(rows: CourseHighlightInput[]) {
+  return rows
+    .filter((h) => h.heading.trim() || h.description.trim())
+    .map((h) => ({ heading: h.heading.trim(), description: h.description.trim() }));
+}
+
+function nestedFaqs(rows: FaqDraft[]) {
+  return rows
+    .filter((f) => f.question.trim() && f.answer.trim())
+    .map((f, order) => ({
+      question: f.question.trim(),
+      answer: f.answer.trim(),
+      order,
+    }));
+}
+
 const emptyForm = {
   title: "",
+  slug: "",
   level: "Beginner" as Course["level"],
   mode: "Online" as Course["mode"],
   duration: "",
   price: "",
   instructor: "",
-  tagline: "",
   description: "",
   metaTitle: "",
   metaDescription: "",
-  metaKeywords: "",
+  ogImage: "",
+  whyTitle: "",
+  highlights: [] as CourseHighlightInput[],
+  faqs: [] as FaqDraft[],
   categoryIds: [] as string[],
 };
 
@@ -92,9 +119,18 @@ function CoursesDash() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Course | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [formBaseline, setFormBaseline] = useState<typeof emptyForm | null>(null);
+  const [formTab, setFormTab] = useState("details");
   const [coverPreview, setCoverPreview] = useState("");
   const [coverFile, setCoverFile] = useState<File | undefined>();
+  const [ogFile, setOgFile] = useState<File | undefined>();
   const [deletingCourse, setDeletingCourse] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const courseFormDirty = useDirtyForm(
+    { form, coverFile, ogFile },
+    formBaseline ? { form: formBaseline, coverFile: undefined, ogFile: undefined } : null,
+    Boolean(editing),
+  );
   const paged = paginate(courses, page);
   const totalStudents = courses.reduce((n, c) => n + c.students, 0);
   const totalRevenue = courses.reduce((n, c) => n + c.students * c.price, 0);
@@ -111,6 +147,9 @@ function CoursesDash() {
     setEditing(null);
     setCoverPreview("");
     setCoverFile(undefined);
+    setOgFile(undefined);
+    setFormTab("details");
+    setFormBaseline(null);
     setForm({
       ...emptyForm,
       instructor: teachers[0]?.name || "",
@@ -119,26 +158,46 @@ function CoursesDash() {
     setFormOpen(true);
   };
 
-  const openEdit = (c: Course) => {
+  const openEdit = async (c: Course) => {
     setEditing(c);
     setCoverPreview(c.cover);
     setCoverFile(undefined);
+    setOgFile(undefined);
+    setFormTab("details");
     const names = c.categories?.length ? c.categories : c.category ? [c.category] : [];
     const ids = courseCategories.filter((cat) => names.includes(cat.name)).map((cat) => cat.id);
-    setForm({
+    const detail = await courseEditorApi.fetchCourseDetail(c.slug);
+    const fromDetail = Array.isArray(detail?.faqs) ? detail.faqs : [];
+    const faqs =
+      fromDetail.length > 0
+        ? fromDetail
+        : c._uuid
+          ? await courseEditorApi.listFaqs(c._uuid)
+          : [];
+    const next = {
       title: c.title,
+      slug: c.slug,
       level: c.level,
       mode: c.mode,
       duration: c.duration,
       price: String(c.price),
       instructor: c.instructor,
-      tagline: c.tagline,
       description: c.description,
-      metaTitle: c.metaTitle || c.title,
-      metaDescription: c.metaDescription || c.tagline || c.description.slice(0, 160),
-      metaKeywords: c.metaKeywords || "",
+      metaTitle: String(detail?.meta_title ?? c.metaTitle ?? ""),
+      metaDescription: String(detail?.meta_description ?? c.metaDescription ?? ""),
+      ogImage: String(detail?.og_image ?? c.ogImage ?? ""),
+      whyTitle: String(detail?.why_this_course_title || ""),
+      highlights: Array.isArray(detail?.highlights)
+        ? detail!.highlights.map((h) => ({
+            heading: String(h.heading || h.title || "").trim(),
+            description: String(h.description || h.body || "").trim(),
+          }))
+        : [],
+      faqs: faqs.map((f) => ({ id: f.id, question: f.question, answer: f.answer })),
       categoryIds: ids,
-    });
+    };
+    setForm(next);
+    setFormBaseline(next);
     setFormOpen(true);
   };
 
@@ -170,20 +229,34 @@ function CoursesDash() {
 
   const saveCourse = async () => {
     if (!form.title.trim()) {
+      setFormTab("details");
       toast.error("Course title is required");
       return;
     }
     if (form.categoryIds.length === 0) {
+      setFormTab("details");
       toast.error("Select at least one category");
       return;
     }
     const price = Number(form.price) || 0;
     const cats = selectedCategoryNames();
+    const slugInput = normalizeCourseSlug(form.slug, form.title);
+    const slugErr = courseSlugError(slugInput);
+    if (slugErr) {
+      setFormTab("details");
+      toast.error(slugErr);
+      return;
+    }
 
+    setSaving(true);
+    try {
+    const highlights = nestedHighlights(form.highlights);
+    const faqs = nestedFaqs(form.faqs);
     if (editing) {
-      // Persist fields first, then upload thumbnail to the existing course slug
-      updateCourse(editing.slug, {
+      const oldSlug = editing.slug;
+      updateCourse(oldSlug, {
         title: form.title,
+        slug: slugInput,
         category: cats[0] || "General",
         categories: cats,
         level: form.level,
@@ -191,28 +264,34 @@ function CoursesDash() {
         duration: form.duration,
         price,
         instructor: form.instructor,
-        tagline: form.tagline || form.title,
         description: form.description,
-        metaTitle: form.metaTitle.trim() || form.title,
-        metaDescription: form.metaDescription.trim(),
-        metaKeywords: form.metaKeywords.trim(),
+        metaTitle: form.metaTitle.trim() || undefined,
+        metaDescription: form.metaDescription.trim() || undefined,
+        ogImage: form.ogImage.startsWith("blob:") ? undefined : form.ogImage,
+        whyThisCourseTitle: form.whyTitle.trim(),
+        highlights,
+        faqs,
       });
 
+      const thumbSlug = slugInput !== oldSlug ? slugInput : oldSlug;
       if (coverFile) {
-        const uploaded = await uploadCourseThumbnail(editing.slug, coverFile);
+        const uploaded = await uploadCourseThumbnail(thumbSlug, coverFile);
         if (uploaded) {
-          // Cache-bust so the new file replaces any prior thumbnail in the UI
           const bust = `${uploaded}${uploaded.includes("?") ? "&" : "?"}v=${Date.now()}`;
-          updateCourse(editing.slug, { cover: bust });
+          updateCourse(thumbSlug, { cover: bust });
         } else {
           toast.error("Course saved, but thumbnail upload failed");
         }
       }
+      if (ogFile) {
+        const uploadedOg = await uploadCourseOgImage(thumbSlug, ogFile);
+        if (!uploadedOg) toast.error("Course saved, but OG image upload failed");
+      }
       toast.success(`Updated ${form.title}`);
     } else {
-      // Create course first, then upload thumbnail (upload needs an existing slug)
       const ok = await addCourse({
         title: form.title,
+        slug: slugInput,
         category: cats[0] || "General",
         categories: cats,
         level: form.level,
@@ -220,14 +299,16 @@ function CoursesDash() {
         duration: form.duration,
         price,
         instructor: form.instructor,
-        tagline: form.tagline || form.title,
         description: form.description,
-        metaTitle: form.metaTitle.trim() || form.title,
-        metaDescription: form.metaDescription.trim(),
-        metaKeywords: form.metaKeywords.trim(),
-        slug: "",
+        metaTitle: form.metaTitle.trim() || undefined,
+        metaDescription: form.metaDescription.trim() || undefined,
+        ogImage: form.ogImage.startsWith("blob:") ? undefined : form.ogImage,
+        whyThisCourseTitle: form.whyTitle.trim(),
+        highlights,
+        faqs,
         cover: "",
         coverFile,
+        ogFile,
         isPublished: true,
       });
       if (ok) {
@@ -236,9 +317,13 @@ function CoursesDash() {
         toast.error(
           "Could not create course on the API — check you are logged in as admin and try again",
         );
+        return;
       }
     }
     setFormOpen(false);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -376,7 +461,7 @@ function CoursesDash() {
 
                     <div className="flex flex-wrap justify-end gap-2">
                       {canManage && (
-                        <Button variant="outline" size="sm" onClick={() => openEdit(c)}>
+                        <Button variant="outline" size="sm" onClick={() => void openEdit(c)}>
                           <Edit className="mr-1 h-3.5 w-3.5" /> Edit
                         </Button>
                       )}
@@ -433,6 +518,21 @@ function CoursesDash() {
             <DialogHeader>
               <DialogTitle>{editing ? "Edit course" : "New course"}</DialogTitle>
             </DialogHeader>
+            <FormTabNav
+              value={formTab}
+              onChange={setFormTab}
+              tabs={[
+                {
+                  id: "details",
+                  label: "Course Details",
+                  error: !form.title.trim() || form.categoryIds.length === 0,
+                },
+                { id: "seo", label: "SEO" },
+                { id: "why", label: "Why This Course" },
+                { id: "faqs", label: "FAQs" },
+              ]}
+            />
+            {formTab === "details" ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <CourseImagePicker
@@ -454,6 +554,36 @@ function CoursesDash() {
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                 />
+              </div>
+              <div className="sm:col-span-2">
+                <Label htmlFor="course-slug">Slug</Label>
+                <Input
+                  id="course-slug"
+                  className="mt-1.5 font-mono text-sm"
+                  value={form.slug}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      slug: e.target.value.toLowerCase().replace(/\s+/g, "-"),
+                    })
+                  }
+                  onBlur={() => {
+                    if (!form.slug.trim() && form.title.trim()) {
+                      setForm((prev) => ({
+                        ...prev,
+                        slug: slugify(prev.title),
+                      }));
+                    }
+                  }}
+                  placeholder={form.title ? slugify(form.title) : "course-url-slug"}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Public URL:{" "}
+                  <span className="font-mono">
+                    /courses/{form.slug.trim() || slugify(form.title) || "…"}
+                  </span>
+                  . Lowercase letters, numbers, and hyphens only.
+                </p>
               </div>
               <div className="sm:col-span-2">
                 <Label>Categories</Label>
@@ -551,14 +681,6 @@ function CoursesDash() {
                 </Select>
               </div>
               <div className="sm:col-span-2">
-                <Label>Tagline</Label>
-                <Input
-                  className="mt-1.5"
-                  value={form.tagline}
-                  onChange={(e) => setForm({ ...form, tagline: e.target.value })}
-                />
-              </div>
-              <div className="sm:col-span-2">
                 <Label>Description</Label>
                 <Textarea
                   className="mt-1.5"
@@ -567,58 +689,54 @@ function CoursesDash() {
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                 />
               </div>
-              <div className="sm:col-span-2 rounded-lg border border-border/60 bg-muted/20 p-3">
-                <p className="mb-2 text-sm font-semibold">SEO (public course page)</p>
-                <p className="mb-3 text-xs text-muted-foreground">
-                  Meta title and description appear in Google and social previews for{" "}
-                  <span className="font-mono">/courses/{editing?.slug || "…"}</span>.
-                </p>
-                <div className="grid gap-3">
-                  <div>
-                    <Label>Meta title</Label>
-                    <Input
-                      className="mt-1.5"
-                      maxLength={70}
-                      value={form.metaTitle}
-                      onChange={(e) => setForm({ ...form, metaTitle: e.target.value })}
-                      placeholder={form.title || "Course meta title"}
-                    />
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      {form.metaTitle.length}/70
-                    </p>
-                  </div>
-                  <div>
-                    <Label>Meta description</Label>
-                    <Textarea
-                      className="mt-1.5"
-                      rows={3}
-                      maxLength={320}
-                      value={form.metaDescription}
-                      onChange={(e) => setForm({ ...form, metaDescription: e.target.value })}
-                      placeholder="Write a clear 120–160 character summary for search results"
-                    />
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      {form.metaDescription.length}/320
-                    </p>
-                  </div>
-                  <div>
-                    <Label>Meta keywords</Label>
-                    <Input
-                      className="mt-1.5"
-                      value={form.metaKeywords}
-                      onChange={(e) => setForm({ ...form, metaKeywords: e.target.value })}
-                      placeholder="web development, react, career"
-                    />
-                  </div>
-                </div>
-              </div>
             </div>
+            ) : null}
+            {formTab === "seo" ? (
+              <SeoFieldsPanel
+                value={{
+                  metaTitle: form.metaTitle,
+                  metaDescription: form.metaDescription,
+                  ogImage: form.ogImage,
+                }}
+                titleFallback={form.title}
+                onOgFile={setOgFile}
+                onChange={(seo) =>
+                  setForm({
+                    ...form,
+                    metaTitle: seo.metaTitle,
+                    metaDescription: seo.metaDescription,
+                    ogImage: seo.ogImage || "",
+                  })
+                }
+              />
+            ) : null}
+            {formTab === "why" ? (
+              <HighlightsListEditor
+                title={form.whyTitle}
+                onTitleChange={(whyTitle) => setForm({ ...form, whyTitle })}
+                highlights={form.highlights}
+                onChange={(highlights) => setForm({ ...form, highlights })}
+                canEdit
+                busy={saving}
+              />
+            ) : null}
+            {formTab === "faqs" ? (
+              <FaqsListEditor
+                items={form.faqs}
+                onChange={(faqs) => setForm({ ...form, faqs })}
+                canEdit
+                busy={saving}
+              />
+            ) : null}
             <DialogFooter>
               <Button variant="outline" onClick={() => setFormOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={() => void saveCourse()}>
-                {editing ? "Save changes" : "Create course"}
+              <Button
+                disabled={saving || Boolean(editing && !courseFormDirty)}
+                onClick={() => void saveCourse()}
+              >
+                {saving ? "Saving…" : editing ? "Save changes" : "Create course"}
               </Button>
             </DialogFooter>
           </DialogContent>

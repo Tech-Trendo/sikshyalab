@@ -18,8 +18,9 @@ import { Loader2, Plus } from "lucide-react";
 import { paginate } from "@/lib/dashboard-utils";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import type { CmsTestimonial } from "@/lib/cms-api";
 import { Rating } from "@/components/ui/Rating";
+import { useDirtyForm } from "@/hooks/useDirtyForm";
+import type { CmsTestimonial } from "@/lib/cms-api";
 
 export const Route = createFileRoute("/dashboard/testimonials")({
   component: TestimonialsPage,
@@ -41,8 +42,10 @@ function TestimonialsPage() {
   const create = useCreateTestimonialMutation();
   const [page, setPage] = useState(1);
   const [edit, setEdit] = useState<CmsTestimonial | null>(null);
+  const [editBaseline, setEditBaseline] = useState<CmsTestimonial | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const testimonialDirty = useDirtyForm(edit, editBaseline, Boolean(edit));
 
   const paged = useMemo(() => paginate(testimonials, page), [testimonials, page]);
 
@@ -141,7 +144,7 @@ function TestimonialsPage() {
                     {t.role}
                     {t.organization ? ` · ${t.organization}` : ""}
                   </p>
-                  <Button variant="outline" size="sm" className="mt-4" onClick={() => setEdit(t)}>
+                  <Button variant="outline" size="sm" className="mt-4" onClick={() => { setEdit(t); setEditBaseline(t); }}>
                     Edit
                   </Button>
                 </CardContent>
@@ -197,7 +200,7 @@ function TestimonialsPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEdit(null)}>Cancel</Button>
-            <Button onClick={save} disabled={update.isPending}>Save</Button>
+            <Button onClick={save} disabled={update.isPending || !testimonialDirty}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

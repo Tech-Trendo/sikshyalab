@@ -14,6 +14,7 @@ import { Clock, BookOpen, Users, GraduationCap, Plus } from "lucide-react";
 import { paginate } from "@/lib/dashboard-utils";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useDirtyForm } from "@/hooks/useDirtyForm";
 
 const csvHeaders = ["id", "course", "batch", "teacher", "startTime", "endTime", "days"];
 
@@ -39,7 +40,9 @@ function ShiftsPage() {
     endTime: "12:00",
     days: "Mon–Fri",
   });
+  const [formBaseline, setFormBaseline] = useState<typeof form | null>(null);
   const paged = paginate(shifts, page);
+  const shiftDirty = useDirtyForm(form, formBaseline, Boolean(editing));
 
   const batchOptions = useMemo(
     () => batches.filter((b) => !form.course || b.course === form.course),
@@ -48,6 +51,7 @@ function ShiftsPage() {
 
   const openAdd = () => {
     setEditing(null);
+    setFormBaseline(null);
     setForm({
       id: `SH-${String(shifts.length + 1).padStart(3, "0")}`,
       course: courses[0]?.title || "",
@@ -62,7 +66,7 @@ function ShiftsPage() {
 
   const openEdit = (s: Shift) => {
     setEditing(s);
-    setForm({
+    const next = {
       id: s.id,
       course: s.course,
       batch: s.batch,
@@ -70,7 +74,9 @@ function ShiftsPage() {
       startTime: s.startTime,
       endTime: s.endTime,
       days: s.days,
-    });
+    };
+    setForm(next);
+    setFormBaseline(next);
     setFormOpen(true);
   };
 
@@ -240,7 +246,7 @@ function ShiftsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button>
-            <Button onClick={save}>{editing ? "Save changes" : "Create shift"}</Button>
+            <Button disabled={Boolean(editing && !shiftDirty)} onClick={save}>{editing ? "Save changes" : "Create shift"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

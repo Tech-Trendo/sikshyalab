@@ -23,6 +23,9 @@ import { CalendarDays, ImagePlus, Loader2, Users } from "lucide-react";
 import { paginate } from "@/lib/dashboard-utils";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { FormTabNav } from "@/components/dashboard/FormTabNav";
+import { SeoFieldsPanel } from "@/components/dashboard/SeoFieldsPanel";
+import { useDirtyForm } from "@/hooks/useDirtyForm";
 
 export const Route = createFileRoute("/dashboard/events")({
   component: EventsPage,
@@ -49,6 +52,9 @@ const emptyEventForm = {
   time: "18:00",
   location: "Online",
   courseId: "",
+  metaTitle: "",
+  metaDescription: "",
+  ogImage: "",
 };
 
 function EventsPage() {
@@ -76,6 +82,9 @@ function EventsPage() {
       courseId: e.course ? String(e.course) : "",
       courseTitle: e.course_title || "",
       cover: e.cover_image || "",
+      metaTitle: e.meta_title || "",
+      metaDescription: e.meta_description || "",
+      ogImage: e.og_image || "",
     }));
   }, [apiEvents]);
 
@@ -100,13 +109,26 @@ function EventsPage() {
     courseId?: string;
     cover?: string;
     slug?: string;
+    metaTitle: string;
+    metaDescription: string;
+    ogImage: string;
   } | null>(null);
+  const [editBaseline, setEditBaseline] = useState<typeof editEvent>(null);
   const [editCoverFile, setEditCoverFile] = useState<File | undefined>();
+  const [editOgFile, setEditOgFile] = useState<File | undefined>();
+  const [editTab, setEditTab] = useState("event");
   const [newEventOpen, setNewEventOpen] = useState(false);
+  const [newTab, setNewTab] = useState("event");
   const [eventForm, setEventForm] = useState(emptyEventForm);
   const [coverPreview, setCoverPreview] = useState("");
   const [coverFile, setCoverFile] = useState<File | undefined>();
+  const [ogFile, setOgFile] = useState<File | undefined>();
   const loading = eventsLoading || regsLoading;
+  const editDirty = useDirtyForm(
+    { form: editEvent, coverFile: editCoverFile, ogFile: editOgFile },
+    editBaseline ? { form: editBaseline, coverFile: undefined, ogFile: undefined } : null,
+    Boolean(editEvent),
+  );
 
   const pagedEvents = useMemo(() => paginate(events, eventsPage), [events, eventsPage]);
   const pagedRegs = useMemo(() => paginate(registrations, regsPage), [registrations, regsPage]);
@@ -135,6 +157,8 @@ function EventsPage() {
                 onClick={() => {
                   setCoverPreview("");
                   setCoverFile(undefined);
+                  setOgFile(undefined);
+                  setNewTab("event");
                   setEventForm(emptyEventForm);
                   setNewEventOpen(true);
                 }}
@@ -164,7 +188,9 @@ function EventsPage() {
                     size="sm"
                     onClick={() => {
                       setEditCoverFile(undefined);
-                      setEditEvent({
+                      setEditOgFile(undefined);
+                      setEditTab("event");
+                      const next = {
                         originalSlug: e.slug || e.title,
                         title: e.title,
                         date: new Date(e.start_datetime),
@@ -173,7 +199,12 @@ function EventsPage() {
                         courseId: e.courseId,
                         cover: e.cover,
                         slug: e.slug,
-                      });
+                        metaTitle: e.metaTitle,
+                        metaDescription: e.metaDescription,
+                        ogImage: e.ogImage,
+                      };
+                      setEditEvent(next);
+                      setEditBaseline(next);
                     }}
                   >
                     Edit
@@ -275,6 +306,16 @@ function EventsPage() {
           <DialogHeader><DialogTitle>Edit event</DialogTitle></DialogHeader>
           {editEvent && (
             <div className="grid gap-3">
+              <FormTabNav
+                value={editTab}
+                onChange={setEditTab}
+                tabs={[
+                  { id: "event", label: "Event", error: !editEvent.title.trim() },
+                  { id: "seo", label: "SEO" },
+                ]}
+              />
+              {editTab === "event" ? (
+                <>
               <div><Label>Title</Label><Input className="mt-1.5" value={editEvent.title} onChange={(e) => setEditEvent({ ...editEvent, title: e.target.value })} /></div>
               <DateTimePickerField
                 date={editEvent.date}
@@ -310,12 +351,32 @@ function EventsPage() {
                 }}
                 onClear={() => setEditCoverFile(undefined)}
               />
+                </>
+              ) : (
+                <SeoFieldsPanel
+                  value={{
+                    metaTitle: editEvent.metaTitle,
+                    metaDescription: editEvent.metaDescription,
+                    ogImage: editEvent.ogImage,
+                  }}
+                  titleFallback={editEvent.title}
+                  onOgFile={setEditOgFile}
+                  onChange={(seo) =>
+                    setEditEvent({
+                      ...editEvent,
+                      metaTitle: seo.metaTitle,
+                      metaDescription: seo.metaDescription,
+                      ogImage: seo.ogImage || "",
+                    })
+                  }
+                />
+              )}
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditEvent(null)}>Cancel</Button>
             <Button
-              disabled={updateEventApi.isPending}
+              disabled={updateEventApi.isPending || !editDirty}
               onClick={() => {
                 if (!editEvent) return;
                 void (async () => {
@@ -328,8 +389,13 @@ function EventsPage() {
                       course: editEvent.courseId || null,
                       ...(start ? { start_datetime: start } : {}),
                       is_published: true,
+                      ...(editEvent.metaTitle.trim() ? { meta_title: editEvent.metaTitle.trim() } : {}),
+                      ...(editEvent.metaDescription.trim()
+                        ? { meta_description: editEvent.metaDescription.trim() }
+                        : {}),
                     },
                     coverFile: editCoverFile,
+                    ogFile: editOgFile,
                   });
                   if (res) {
                     toast.success("Event updated");
@@ -348,6 +414,16 @@ function EventsPage() {
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>New event</DialogTitle></DialogHeader>
           <div className="grid gap-3">
+            <FormTabNav
+              value={newTab}
+              onChange={setNewTab}
+              tabs={[
+                { id: "event", label: "Event", error: !eventForm.title.trim() || !eventForm.date },
+                { id: "seo", label: "SEO" },
+              ]}
+            />
+            {newTab === "event" ? (
+              <>
             <div><Label>Title</Label><Input className="mt-1.5" value={eventForm.title} onChange={(e) => setEventForm({ ...eventForm, title: e.target.value })} /></div>
             <DateTimePickerField
               date={eventForm.date}
@@ -383,6 +459,26 @@ function EventsPage() {
                 setCoverFile(undefined);
               }}
             />
+              </>
+            ) : (
+              <SeoFieldsPanel
+                value={{
+                  metaTitle: eventForm.metaTitle,
+                  metaDescription: eventForm.metaDescription,
+                  ogImage: eventForm.ogImage,
+                }}
+                titleFallback={eventForm.title}
+                onOgFile={setOgFile}
+                onChange={(seo) =>
+                  setEventForm({
+                    ...eventForm,
+                    metaTitle: seo.metaTitle,
+                    metaDescription: seo.metaDescription,
+                    ogImage: seo.ogImage || "",
+                  })
+                }
+              />
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewEventOpen(false)}>Cancel</Button>
@@ -390,10 +486,10 @@ function EventsPage() {
               disabled={createEvent.isPending}
               onClick={() => {
                 if (!eventForm.title.trim() || !eventForm.date) {
+                  setNewTab("event");
                   toast.error("Title and date are required");
                   return;
                 }
-                const slug = eventForm.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
                 const start = parseEventDateTime(eventForm.date, eventForm.time);
                 if (!start) {
                   toast.error("Invalid date or time");
@@ -402,15 +498,18 @@ function EventsPage() {
                 void (async () => {
                   const res = await createEvent.mutateAsync({
                     payload: {
-                      slug,
                       title: eventForm.title,
                       location: eventForm.location,
                       start_datetime: start,
-                      description: eventForm.title,
                       course: eventForm.courseId || null,
                       is_published: true,
+                      ...(eventForm.metaTitle.trim() ? { meta_title: eventForm.metaTitle.trim() } : {}),
+                      ...(eventForm.metaDescription.trim()
+                        ? { meta_description: eventForm.metaDescription.trim() }
+                        : {}),
                     },
                     coverFile,
+                    ogFile,
                   });
                   if (res) {
                     toast.success("Event created");
@@ -418,6 +517,7 @@ function EventsPage() {
                     setEventForm(emptyEventForm);
                     setCoverPreview("");
                     setCoverFile(undefined);
+                    setOgFile(undefined);
                   } else toast.error("Could not create event");
                 })();
               }}

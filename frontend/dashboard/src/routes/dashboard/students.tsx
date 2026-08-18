@@ -22,6 +22,7 @@ import { paginate } from "@/lib/dashboard-utils";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { credentialsMailto } from "@/lib/credentials-mailto";
+import { useDirtyForm } from "@/hooks/useDirtyForm";
 
 export const Route = createFileRoute("/dashboard/students")({
   component: StudentsPage,
@@ -44,6 +45,14 @@ function StudentsPage() {
   const [progressValue, setProgressValue] = useState("0");
   const [progressNote, setProgressNote] = useState("");
   const [form, setForm] = useState(emptyForm);
+  const [formBaseline, setFormBaseline] = useState<typeof emptyForm | null>(null);
+  const studentDirty = useDirtyForm(form, formBaseline, Boolean(editing));
+  const [progressBaseline, setProgressBaseline] = useState<{ progressValue: string; progressNote: string } | null>(null);
+  const progressDirty = useDirtyForm(
+    { progressValue, progressNote },
+    progressBaseline,
+    Boolean(progressFor),
+  );
 
   const filtered = useMemo(() => students.filter((s) =>
     (q === "" || s.name.toLowerCase().includes(q.toLowerCase()) || s.email.toLowerCase().includes(q.toLowerCase()))
@@ -59,6 +68,7 @@ function StudentsPage() {
 
   const openAdd = () => {
     setEditing(null);
+    setFormBaseline(null);
     const defaultCourse = courses[0]?.title || "";
     const defaultBatches = defaultCourse
       ? batches.filter((b) => b.course === defaultCourse)
@@ -73,7 +83,7 @@ function StudentsPage() {
 
   const openEdit = (s: Student) => {
     setEditing(s);
-    setForm({
+    const next = {
       name: s.name,
       email: s.email,
       phone: s.phone,
@@ -81,7 +91,9 @@ function StudentsPage() {
       batch: s.batch,
       shift: s.shift,
       status: s.status,
-    });
+    };
+    setForm(next);
+    setFormBaseline(next);
     setFormOpen(true);
   };
 
@@ -205,7 +217,7 @@ function StudentsPage() {
                     <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 shrink-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => setViewing(s)}>View profile</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => { setProgressFor(s); setProgressValue(String(s.progress)); setProgressNote(s.progressNote || ""); }}>Review progress</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => { setProgressFor(s); const pv = String(s.progress); const pn = s.progressNote || ""; setProgressValue(pv); setProgressNote(pn); setProgressBaseline({ progressValue: pv, progressNote: pn }); }}>Review progress</DropdownMenuItem>
                       {!isTeacher && (
                         <>
                           <DropdownMenuItem onClick={() => openEdit(s)}>Edit</DropdownMenuItem>
@@ -306,7 +318,7 @@ function StudentsPage() {
                     <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => setViewing(s)}>View profile</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => { setProgressFor(s); setProgressValue(String(s.progress)); setProgressNote(s.progressNote || ""); }}>Review progress</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => { setProgressFor(s); const pv = String(s.progress); const pn = s.progressNote || ""; setProgressValue(pv); setProgressNote(pn); setProgressBaseline({ progressValue: pv, progressNote: pn }); }}>Review progress</DropdownMenuItem>
                       {!isTeacher && (
                         <>
                           <DropdownMenuItem onClick={() => openEdit(s)}>Edit</DropdownMenuItem>
@@ -447,7 +459,7 @@ function StudentsPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button>
-              <Button onClick={save}>{editing ? "Save changes" : "Add student"}</Button>
+              <Button disabled={Boolean(editing && !studentDirty)} onClick={save}>{editing ? "Save changes" : "Add student"}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -528,7 +540,7 @@ function StudentsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setProgressFor(null)}>Cancel</Button>
-            <Button onClick={() => {
+            <Button disabled={!progressDirty} onClick={() => {
               if (!progressFor) return;
               const p = Math.min(100, Math.max(0, Number(progressValue) || 0));
               updateStudent(progressFor.id, {

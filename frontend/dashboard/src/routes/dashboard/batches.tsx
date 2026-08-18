@@ -18,6 +18,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { format, parse } from "date-fns";
 import { DatePickerField } from "@/components/dashboard/DatePickerField";
+import { useDirtyForm } from "@/hooks/useDirtyForm";
 
 const SHIFT_LABELS = ["Morning", "Daytime", "Evening", "Weekend"] as const;
 
@@ -47,10 +48,13 @@ function BatchesPage() {
   const [form, setForm] = useState({
     id: "", course: "", teacher: "", shift: "Evening", capacity: "30", enrolled: "0", startDate: undefined as Date | undefined, status: "Upcoming" as Batch["status"],
   });
+  const [formBaseline, setFormBaseline] = useState<typeof form | null>(null);
   const paged = paginate(batches, page);
+  const batchDirty = useDirtyForm(form, formBaseline, Boolean(editing));
 
   const openAdd = () => {
     setEditing(null);
+    setFormBaseline(null);
     const prefix = "B-2026";
     const maxSeq = batches.reduce((max, b) => {
       if (!b.id?.startsWith(prefix)) return max;
@@ -73,7 +77,7 @@ function BatchesPage() {
 
   const openEdit = (b: Batch) => {
     setEditing(b);
-    setForm({
+    const next = {
       id: b.id,
       course: b.course,
       teacher: b.teacher,
@@ -82,7 +86,9 @@ function BatchesPage() {
       enrolled: String(b.enrolled),
       startDate: parseStartDate(b.start),
       status: b.status as Batch["status"],
-    });
+    };
+    setForm(next);
+    setFormBaseline(next);
     setFormOpen(true);
   };
 
@@ -273,7 +279,7 @@ function BatchesPage() {
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button>
-                <Button onClick={() => void save()}>{editing ? "Save changes" : "Create batch"}</Button>
+                <Button disabled={Boolean(editing && !batchDirty)} onClick={() => void save()}>{editing ? "Save changes" : "Create batch"}</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>

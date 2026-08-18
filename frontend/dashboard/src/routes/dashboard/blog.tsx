@@ -7,13 +7,20 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Eye, EyeOff, FileText, ImagePlus, Loader2 } from "lucide-react";
+import { FileText, ImagePlus, Loader2 } from "lucide-react";
 import { paginate } from "@/lib/dashboard-utils";
-import { renderBlogContent } from "@/lib/markdown";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { cmsApi, type CmsBlogPost } from "@/lib/cms-api";
+import {
+  BlogSectionsEditor,
+  emptyBlogSection,
+  type BlogSectionDraft,
+} from "@/components/dashboard/BlogSectionsEditor";
+import { FormTabNav } from "@/components/dashboard/FormTabNav";
+import { SeoFieldsPanel } from "@/components/dashboard/SeoFieldsPanel";
+import { useDirtyForm } from "@/hooks/useDirtyForm";
 
 export const Route = createFileRoute("/dashboard/blog")({
   component: BlogPage,
@@ -22,57 +29,64 @@ export const Route = createFileRoute("/dashboard/blog")({
 type BlogFormState = {
   title: string;
   excerpt: string;
-  content: string;
+  sections: BlogSectionDraft[];
+  metaTitle: string;
+  metaDescription: string;
+  ogImage: string;
 };
 
 type EditBlogState = BlogFormState & {
   slug: string;
+  id: string;
   cover?: string;
   author?: string;
   date?: string;
 };
 
-const emptyForm: BlogFormState = { title: "", excerpt: "", content: "" };
+const emptyForm: BlogFormState = {
+  title: "",
+  excerpt: "",
+  sections: [emptyBlogSection()],
+  metaTitle: "",
+  metaDescription: "",
+  ogImage: "",
+};
 
-function ContentField({
-  value,
-  onChange,
-  preview,
-  onTogglePreview,
-}: {
-  value: string;
-  onChange: (next: string) => void;
-  preview: boolean;
-  onTogglePreview: () => void;
-}) {
-  return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <Label>Content</Label>
-        <Button type="button" variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-xs" onClick={onTogglePreview}>
-          {preview ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-          {preview ? "Edit" : "Preview"}
-        </Button>
-      </div>
-      {preview ? (
-        <div
-          className="min-h-[220px] rounded-md border border-border/60 bg-muted/20 p-3 text-sm prose prose-sm max-w-none"
-          dangerouslySetInnerHTML={{ __html: renderBlogContent(value) || "<p class='text-muted-foreground'>Nothing to preview yet.</p>" }}
-        />
-      ) : (
-        <Textarea
-          className="mt-0 min-h-[220px] font-mono text-sm"
-          rows={10}
-          value={value}
-          placeholder={"## Heading\n\nWrite your article in Markdown.\n\n**Bold text**, lists, and links work."}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      )}
-      <p className="mt-1 text-[11px] text-muted-foreground">
-        Supports Markdown (`##`, **bold**, lists) or HTML. Saved as the full article body.
-      </p>
-    </div>
-  );
+function mapSections(post: Pick<CmsBlogPost, "sections" | "content">): BlogSectionDraft[] {
+  const nested = Array.isArray(post.sections) ? post.sections : [];
+  if (nested.length) {
+    return nested.map((s) => ({
+      id: s.id != null ? String(s.id) : undefined,
+      title: String(s.title || ""),
+      description: String(s.description || ""),
+    }));
+  }
+  if (post.content?.trim()) {
+    return [{ title: "", description: post.content }];
+  }
+  return [emptyBlogSection()];
+}
+
+function sectionsValid(sections: BlogSectionDraft[]) {
+  if (!sections.some((s) => s.description.trim())) return false;
+  return sections.every((s) => !s.title.trim() || Boolean(s.description.trim()));
+}
+
+function nestedSections(sections: BlogSectionDraft[]) {
+  return sections
+    .filter((s) => s.description.trim())
+    .map((s, order) => ({
+      title: s.title.trim() ? s.title.trim() : null,
+      description: s.description.trim(),
+      order,
+    }));
+}
+
+function optionalSeo(metaTitle: string, metaDescription: string) {
+  const body: { meta_title?: string; meta_description?: string } = {};
+  if (metaTitle.trim()) body.meta_title = metaTitle.trim();
+  if (metaDescription.trim()) body.meta_description = metaDescription.trim();
+  return body;
 }
 
 function BlogPage() {
@@ -83,10 +97,15 @@ function BlogPage() {
   const blog = useMemo(() => {
     if (!apiBlog?.length) return [];
     return apiBlog.map((b) => ({
+      id: String(b.id),
       slug: b.slug,
       title: b.title,
       excerpt: b.excerpt,
       content: b.content || "",
+      sections: mapSections(b),
+      metaTitle: b.meta_title || "",
+      metaDescription: b.meta_description || "",
+      ogImage: b.og_image || "",
       author: b.author_name || "Admin",
       date: b.published_at
         ? new Date(b.published_at).toLocaleDateString("en-US", {
@@ -103,14 +122,46 @@ function BlogPage() {
 
   const [blogPage, setBlogPage] = useState(1);
   const [editBlog, setEditBlog] = useState<EditBlogState | null>(null);
+  const [editBaseline, setEditBaseline] = useState<EditBlogState | null>(null);
   const [editCoverFile, setEditCoverFile] = useState<File | undefined>();
-  const [editPreview, setEditPreview] = useState(false);
+  const [editOgFile, setEditOgFile] = useState<File | undefined>();
+  const [editTab, setEditTab] = useState("blog");
   const [newBlogOpen, setNewBlogOpen] = useState(false);
+  const [newTab, setNewTab] = useState("blog");
   const [blogForm, setBlogForm] = useState<BlogFormState>(emptyForm);
   const [coverPreview, setCoverPreview] = useState("");
   const [coverFile, setCoverFile] = useState<File | undefined>();
-  const [newPreview, setNewPreview] = useState(false);
+  const [ogFile, setOgFile] = useState<File | undefined>();
   const blogPaged = paginate(blog, blogPage);
+  const editDirty = useDirtyForm(
+    { form: editBlog, coverFile: editCoverFile, ogFile: editOgFile },
+    editBaseline ? { form: editBaseline, coverFile: undefined, ogFile: undefined } : null,
+    Boolean(editBlog),
+  );
+
+  const openEdit = async (b: (typeof blog)[number]) => {
+    setEditCoverFile(undefined);
+    setEditOgFile(undefined);
+    setEditTab("blog");
+    let sections = b.sections;
+    const detail = await cmsApi.getBlogPost(b.slug);
+    if (detail) sections = mapSections(detail);
+    const next: EditBlogState = {
+      id: detail ? String(detail.id) : b.id,
+      slug: b.slug,
+      title: detail?.title || b.title,
+      excerpt: detail?.excerpt || b.excerpt,
+      sections,
+      metaTitle: detail?.meta_title || b.metaTitle,
+      metaDescription: detail?.meta_description || b.metaDescription,
+      ogImage: detail?.og_image || b.ogImage,
+      cover: detail?.cover_image || b.cover,
+      author: b.author,
+      date: b.date,
+    };
+    setEditBlog(next);
+    setEditBaseline(next);
+  };
 
   return (
     <>
@@ -126,6 +177,23 @@ function BlogPage() {
       )}
 
       <div className="mt-6 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold">Published Blogs</h3>
+          <Button
+            size="sm"
+            className="btn-highlight"
+            onClick={() => {
+              setBlogForm(emptyForm);
+              setCoverPreview("");
+              setCoverFile(undefined);
+              setOgFile(undefined);
+              setNewTab("blog");
+              setNewBlogOpen(true);
+            }}
+          >
+            <ImagePlus className="mr-1 h-4 w-4" /> New post
+          </Button>
+        </div>
         {blogPaged.items.map((b) => (
           <Card key={b.slug} className="border-border/60">
             <CardContent className="flex items-center gap-4 p-4">
@@ -136,23 +204,7 @@ function BlogPage() {
                   {b.date} • {b.author}
                 </p>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setEditCoverFile(undefined);
-                  setEditPreview(false);
-                  setEditBlog({
-                    slug: b.slug,
-                    title: b.title,
-                    excerpt: b.excerpt,
-                    content: b.content,
-                    cover: b.cover,
-                    author: b.author,
-                    date: b.date,
-                  });
-                }}
-              >
+              <Button variant="outline" size="sm" onClick={() => void openEdit(b)}>
                 Edit
               </Button>
             </CardContent>
@@ -166,18 +218,6 @@ function BlogPage() {
           to={blogPaged.to}
           onPageChange={setBlogPage}
         />
-        <Button
-          className="btn-highlight"
-          onClick={() => {
-            setBlogForm(emptyForm);
-            setCoverPreview("");
-            setCoverFile(undefined);
-            setNewPreview(false);
-            setNewBlogOpen(true);
-          }}
-        >
-          <ImagePlus className="mr-1 h-4 w-4" /> New post
-        </Button>
       </div>
 
       <Dialog open={!!editBlog} onOpenChange={(o) => !o && setEditBlog(null)}>
@@ -185,48 +225,74 @@ function BlogPage() {
           <DialogHeader><DialogTitle>Edit blog post</DialogTitle></DialogHeader>
           {editBlog && (
             <div className="grid gap-3">
-              <div>
-                <Label>Title</Label>
-                <Input
-                  className="mt-1.5"
-                  value={editBlog.title}
-                  onChange={(e) => setEditBlog({ ...editBlog, title: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Describe</Label>
-                <Textarea
-                  className="mt-1.5 min-h-[140px]"
-                  rows={5}
-                  value={editBlog.excerpt}
-                  onChange={(e) => setEditBlog({ ...editBlog, excerpt: e.target.value })}
-                />
-              </div>
-              <MediaImagePicker
-                label="Cover image (16:9)"
-                value={editBlog.cover}
-                onChange={(url, file) => {
-                  setEditBlog({ ...editBlog, cover: url });
-                  setEditCoverFile(file);
-                }}
-                onClear={() => setEditCoverFile(undefined)}
+              <FormTabNav
+                value={editTab}
+                onChange={setEditTab}
+                tabs={[
+                  { id: "blog", label: "Blog", error: !editBlog.title.trim() || !sectionsValid(editBlog.sections) },
+                  { id: "seo", label: "SEO" },
+                ]}
               />
-              <ContentField
-                value={editBlog.content}
-                onChange={(content) => setEditBlog({ ...editBlog, content })}
-                preview={editPreview}
-                onTogglePreview={() => setEditPreview((v) => !v)}
-              />
+              {editTab === "blog" ? (
+                <div className="grid gap-3">
+                  <div>
+                    <Label>Title</Label>
+                    <Input
+                      className="mt-1.5"
+                      value={editBlog.title}
+                      onChange={(e) => setEditBlog({ ...editBlog, title: e.target.value })}
+                    />
+                  </div>
+                  <MediaImagePicker
+                    label="Cover image (16:9)"
+                    value={editBlog.cover}
+                    onChange={(url, file) => {
+                      setEditBlog({ ...editBlog, cover: url });
+                      setEditCoverFile(file);
+                    }}
+                    onClear={() => setEditCoverFile(undefined)}
+                  />
+                  <BlogSectionsEditor
+                    sections={editBlog.sections}
+                    onChange={(sections) => setEditBlog({ ...editBlog, sections })}
+                    disabled={updateBlogApi.isPending}
+                  />
+                </div>
+              ) : (
+                <SeoFieldsPanel
+                  value={{
+                    metaTitle: editBlog.metaTitle,
+                    metaDescription: editBlog.metaDescription,
+                    ogImage: editBlog.ogImage,
+                  }}
+                  titleFallback={editBlog.title}
+                  onOgFile={setEditOgFile}
+                  onChange={(seo) =>
+                    setEditBlog({
+                      ...editBlog,
+                      metaTitle: seo.metaTitle,
+                      metaDescription: seo.metaDescription,
+                      ogImage: seo.ogImage || "",
+                    })
+                  }
+                />
+              )}
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditBlog(null)}>Cancel</Button>
             <Button
-              disabled={updateBlogApi.isPending}
+              disabled={updateBlogApi.isPending || !editDirty}
               onClick={() => {
                 if (!editBlog) return;
-                if (!editBlog.content.trim()) {
-                  toast.error("Content is required");
+                if (!editBlog.title.trim()) {
+                  setEditTab("blog");
+                  toast.error("Title is required");
+                  return;
+                }
+                if (!sectionsValid(editBlog.sections)) {
+                  setEditTab("blog");
+                  toast.error("Each section needs a description");
                   return;
                 }
                 void (async () => {
@@ -235,11 +301,13 @@ function BlogPage() {
                       slug: editBlog.slug,
                       patch: {
                         title: editBlog.title,
-                        excerpt: editBlog.excerpt,
-                        content: editBlog.content,
+                        excerpt: "",
                         is_published: true,
+                        sections: nestedSections(editBlog.sections),
+                        ...optionalSeo(editBlog.metaTitle, editBlog.metaDescription),
                       },
                       coverFile: editCoverFile,
+                      ogFile: editOgFile,
                     });
                     if (res) {
                       toast.success("Post updated");
@@ -261,41 +329,61 @@ function BlogPage() {
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader><DialogTitle>New blog post</DialogTitle></DialogHeader>
           <div className="grid gap-3">
-            <div>
-              <Label>Title</Label>
-              <Input
-                className="mt-1.5"
-                value={blogForm.title}
-                onChange={(e) => setBlogForm({ ...blogForm, title: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>Describe</Label>
-              <Textarea
-                className="mt-1.5 min-h-[140px]"
-                rows={5}
-                value={blogForm.excerpt}
-                onChange={(e) => setBlogForm({ ...blogForm, excerpt: e.target.value })}
-              />
-            </div>
-            <MediaImagePicker
-              label="Cover image (16:9)"
-              value={coverPreview}
-              onChange={(url, file) => {
-                setCoverPreview(url);
-                setCoverFile(file);
-              }}
-              onClear={() => {
-                setCoverPreview("");
-                setCoverFile(undefined);
-              }}
+            <FormTabNav
+              value={newTab}
+              onChange={setNewTab}
+              tabs={[
+                { id: "blog", label: "Blog", error: !blogForm.title.trim() || !sectionsValid(blogForm.sections) },
+                { id: "seo", label: "SEO" },
+              ]}
             />
-            <ContentField
-              value={blogForm.content}
-              onChange={(content) => setBlogForm({ ...blogForm, content })}
-              preview={newPreview}
-              onTogglePreview={() => setNewPreview((v) => !v)}
-            />
+            {newTab === "blog" ? (
+              <div className="grid gap-3">
+                <div>
+                  <Label>Title</Label>
+                  <Input
+                    className="mt-1.5"
+                    value={blogForm.title}
+                    onChange={(e) => setBlogForm({ ...blogForm, title: e.target.value })}
+                  />
+                </div>
+                <MediaImagePicker
+                  label="Cover image (16:9)"
+                  value={coverPreview}
+                  onChange={(url, file) => {
+                    setCoverPreview(url);
+                    setCoverFile(file);
+                  }}
+                  onClear={() => {
+                    setCoverPreview("");
+                    setCoverFile(undefined);
+                  }}
+                />
+                <BlogSectionsEditor
+                  sections={blogForm.sections}
+                  onChange={(sections) => setBlogForm({ ...blogForm, sections })}
+                  disabled={createBlog.isPending}
+                />
+              </div>
+            ) : (
+              <SeoFieldsPanel
+                value={{
+                  metaTitle: blogForm.metaTitle,
+                  metaDescription: blogForm.metaDescription,
+                  ogImage: blogForm.ogImage,
+                }}
+                titleFallback={blogForm.title}
+                onOgFile={setOgFile}
+                onChange={(seo) =>
+                  setBlogForm({
+                    ...blogForm,
+                    metaTitle: seo.metaTitle,
+                    metaDescription: seo.metaDescription,
+                    ogImage: seo.ogImage || "",
+                  })
+                }
+              />
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewBlogOpen(false)}>Cancel</Button>
@@ -303,11 +391,13 @@ function BlogPage() {
               disabled={createBlog.isPending}
               onClick={() => {
                 if (!blogForm.title.trim()) {
+                  setNewTab("blog");
                   toast.error("Title is required");
                   return;
                 }
-                if (!blogForm.content.trim()) {
-                  toast.error("Content is required");
+                if (!sectionsValid(blogForm.sections)) {
+                  setNewTab("blog");
+                  toast.error("Each section needs a description");
                   return;
                 }
                 const slug = blogForm.title
@@ -320,11 +410,13 @@ function BlogPage() {
                       payload: {
                         slug,
                         title: blogForm.title,
-                        excerpt: blogForm.excerpt,
-                        content: blogForm.content,
+                        excerpt: "",
                         is_published: true,
+                        sections: nestedSections(blogForm.sections),
+                        ...optionalSeo(blogForm.metaTitle, blogForm.metaDescription),
                       },
                       coverFile,
+                      ogFile,
                     });
                     if (res) {
                       toast.success("Post created");
@@ -332,7 +424,7 @@ function BlogPage() {
                       setBlogForm(emptyForm);
                       setCoverPreview("");
                       setCoverFile(undefined);
-                      setNewPreview(false);
+                      setOgFile(undefined);
                     }
                   } catch (err) {
                     toast.error(err instanceof Error ? err.message : "Could not create post");

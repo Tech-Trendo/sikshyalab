@@ -12,6 +12,7 @@ import {
   useUpdateFaqMutation,
 } from "@/hooks/useCmsQueries";
 import { FAQ_SECTIONS, type CmsHomepageFeature } from "@/lib/cms-api";
+import { AboutPageEditor } from "@/components/dashboard/AboutPageEditor";
 import { MediaImagePicker } from "@/components/dashboard/MediaImagePicker";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { FileText, Plus, Sparkles, Upload, Loader2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cmsApi, cmsKeys } from "@/lib/cms-api";
 import { useQueryClient } from "@tanstack/react-query";
@@ -45,7 +46,6 @@ function ContentPage() {
   const { data: apiFaqs, isLoading: faqsLoading } = useFaqsQuery();
   const { data: settings } = useSiteSettingsQuery();
   const { data: banners = [] } = useBannersQuery();
-  const { data: aboutPages = [] } = usePagesQuery("ABOUT");
   const { data: contactPages = [] } = usePagesQuery("CONTACT");
   const saveHomepage = useSaveHomepageMutation();
   const saveCmsPage = useSaveCmsPageMutation();
@@ -53,10 +53,9 @@ function ContentPage() {
   const updateFaqApi = useUpdateFaqMutation();
 
   const homeBanner = useMemo(
-    () => banners.find((b) => (b.placement || "HOME") === "HOME") ?? banners[0],
+    () => banners.find((b) => (b.placement || "HOME").toUpperCase() === "HOME"),
     [banners],
   );
-  const aboutPage = aboutPages[0];
   const contactPage = contactPages[0];
 
   const faqs = useMemo<FaqRow[]>(() => {
@@ -103,9 +102,6 @@ function ContentPage() {
   const [testimonialsSaving, setTestimonialsSaving] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoSaving, setLogoSaving] = useState(false);
-  const [aboutForm, setAboutForm] = useState({ title: "", content: "" });
-  const [aboutImagePreview, setAboutImagePreview] = useState("");
-  const [aboutImageFile, setAboutImageFile] = useState<File | null>(null);
   const [contactForm, setContactForm] = useState({
     title: "",
     content: "",
@@ -127,8 +123,12 @@ function ContentPage() {
     category: FAQ_SECTIONS[0] as string,
   });
 
+  const homeHydrated = useRef(false);
+  const contactHydrated = useRef(false);
+
   useEffect(() => {
-    if (!settings && !homeBanner) return;
+    if (homeHydrated.current || (!settings && !homeBanner)) return;
+    homeHydrated.current = true;
     const social = settings?.social_links || {};
     setHomeForm((prev) => ({
       ...prev,
@@ -152,17 +152,8 @@ function ContentPage() {
   }, [settings, homeBanner, heroImageFile]);
 
   useEffect(() => {
-    if (!aboutPage) return;
-    setAboutForm({
-      title: aboutPage.title || "About ShikshaLab",
-      content: aboutPage.content || "",
-    });
-    if (!aboutImageFile && aboutPage.featured_image) {
-      setAboutImagePreview(aboutPage.featured_image);
-    }
-  }, [aboutPage, aboutImageFile]);
-
-  useEffect(() => {
+    if (contactHydrated.current || (!settings && !contactPage)) return;
+    contactHydrated.current = true;
     const social = settings?.social_links || {};
     setContactForm((prev) => ({
       title: contactPage?.title || prev.title || "Get In Touch",
@@ -194,20 +185,6 @@ function ContentPage() {
     setHeroImageFile(null);
     if (res || homeBanner || heroImageFile) toast.success("Homepage saved to CMS");
     else toast.error("Could not save homepage");
-  };
-
-  const onSaveAbout = async () => {
-    const res = await saveCmsPage.mutateAsync({
-      slug: aboutPage?.slug || "about",
-      title: aboutForm.title,
-      content: aboutForm.content,
-      page_type: "ABOUT",
-      is_published: true,
-      featuredImageFile: aboutImageFile,
-    });
-    setAboutImageFile(null);
-    if (res) toast.success("About page saved");
-    else toast.error("Could not save About page");
   };
 
   const onSaveContact = async () => {
@@ -410,50 +387,7 @@ function ContentPage() {
         </TabsContent>
 
         <TabsContent value="about" className="mt-4">
-          <Card className="border-border/60">
-            <CardContent className="grid gap-4 p-6">
-              <div>
-                <Label>Page title</Label>
-                <Input
-                  className="mt-1.5"
-                  value={aboutForm.title}
-                  onChange={(e) => setAboutForm({ ...aboutForm, title: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>About content</Label>
-                <Textarea
-                  className="mt-1.5"
-                  rows={8}
-                  value={aboutForm.content}
-                  onChange={(e) => setAboutForm({ ...aboutForm, content: e.target.value })}
-                />
-              </div>
-              <MediaImagePicker
-                label="Featured image"
-                hint="Used on the public About page header."
-                value={aboutImagePreview}
-                aspect="video"
-                onChange={(preview, file) => {
-                  setAboutImagePreview(preview);
-                  setAboutImageFile(file || null);
-                }}
-                onClear={() => {
-                  setAboutImagePreview("");
-                  setAboutImageFile(null);
-                }}
-              />
-              <div>
-                <Button
-                  className="btn-highlight"
-                  disabled={saveCmsPage.isPending}
-                  onClick={() => void onSaveAbout()}
-                >
-                  {saveCmsPage.isPending ? "Saving…" : "Save About page"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <AboutPageEditor />
         </TabsContent>
 
         <TabsContent value="contact" className="mt-4">

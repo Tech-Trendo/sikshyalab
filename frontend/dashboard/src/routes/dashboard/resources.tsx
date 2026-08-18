@@ -86,11 +86,12 @@ function ResourcesPage() {
   const [previewId, setPreviewId] = useState<string | null>(null);
 
   const canUpload = isTeacher || isAdmin;
-  const visibleCourses = canUpload
-    ? isTeacher
+  // Admin: every course. Teacher: assigned courses. Student: enrolled courses.
+  const visibleCourses = isAdmin
+    ? courses
+    : isTeacher
       ? teacherCourses
-      : courses
-    : studentCourses;
+      : studentCourses;
 
   const course = visibleCourses.find((c) => c.slug === courseSlug) || visibleCourses[0];
   const activeSlug = course?.slug || "";
@@ -98,8 +99,11 @@ function ResourcesPage() {
   const parts = chapters[chapterIndex]?.parts || [];
 
   const scoped = useMemo(
-    () => partResources.filter((r) => visibleCourses.some((c) => c.slug === r.courseSlug)),
-    [partResources, visibleCourses],
+    () =>
+      isAdmin
+        ? partResources
+        : partResources.filter((r) => visibleCourses.some((c) => c.slug === r.courseSlug)),
+    [isAdmin, partResources, visibleCourses],
   );
   const paged = paginate(scoped, page);
 
@@ -163,20 +167,28 @@ function ResourcesPage() {
       <PageHeader
         title="Resources"
         subtitle={
-          canUpload
-            ? "Upload videos, notes, PDFs and files to a course → chapter → part."
-            : "Resources for courses you are enrolled in."
+          isAdmin
+            ? "Upload and manage resources for any course → chapter → part."
+            : canUpload
+              ? "Upload videos, notes, PDFs and files to a course → chapter → part."
+              : "Resources for courses you are enrolled in."
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label={canUpload ? "My courses" : "Enrolled courses"}
+          label={isAdmin ? "All courses" : canUpload ? "My courses" : "Enrolled courses"}
           value={visibleCourses.length}
           icon={FolderOpen}
           tone="primary"
         />
         <StatCard label="Resources" value={scoped.length} icon={Upload} tone="info" />
+        <StatCard
+          label="Videos"
+          value={scoped.filter((r) => resourceKind(r) === "video").length}
+          icon={PlayCircle}
+          tone="highlight"
+        />
         <StatCard
           label="PDFs"
           value={scoped.filter((r) => resourceKind(r) === "pdf").length}
@@ -270,7 +282,9 @@ function ResourcesPage() {
       <Card className="mt-6 border-border/60">
         <CardContent className="space-y-3 p-5">
           {paged.items.map((r) => {
-            const c = visibleCourses.find((courseRow) => courseRow.slug === r.courseSlug);
+            const c =
+              courses.find((courseRow) => courseRow.slug === r.courseSlug) ||
+              visibleCourses.find((courseRow) => courseRow.slug === r.courseSlug);
             const ch = c?.chapters[r.chapterIndex];
             const part = ch?.parts[r.partIndex];
             const kind = resourceKind(r);
@@ -336,7 +350,9 @@ function ResourcesPage() {
             <p className="text-sm text-muted-foreground">
               {isStudent
                 ? "No resources available for your enrolled courses yet."
-                : "No resources uploaded yet."}
+                : isAdmin
+                  ? "No resources uploaded yet. Choose any course above to add one."
+                  : "No resources uploaded yet."}
             </p>
           )}
           <DataPagination

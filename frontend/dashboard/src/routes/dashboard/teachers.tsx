@@ -23,6 +23,7 @@ import { useReviewsQuery } from "@/hooks/useCmsQueries";
 import { Rating } from "@/components/ui/Rating";
 import { averageRating, formatRating } from "@/lib/rating";
 import { apiMutateDetailed } from "@/lib/dashboard-api";
+import { useDirtyForm } from "@/hooks/useDirtyForm";
 
 export const Route = createFileRoute("/dashboard/teachers")({
   component: TeachersPage,
@@ -46,7 +47,9 @@ function TeachersPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [formBaseline, setFormBaseline] = useState<typeof emptyForm | null>(null);
   const paged = paginate(teachers, page);
+  const teacherDirty = useDirtyForm(form, formBaseline, Boolean(editingTeacher));
   const avgRating = useMemo(() => averageRating(reviews), [reviews]);
   const activeBatches = useMemo(() => batches.filter((b) => b.status === "Ongoing").length, [batches]);
 
@@ -202,6 +205,7 @@ function TeachersPage() {
               onClick={() => {
                 setEditingTeacher(null);
                 setForm(emptyForm);
+                setFormBaseline(null);
                 setFormOpen(true);
               }}
             >
@@ -252,13 +256,15 @@ function TeachersPage() {
                     className="col-span-2"
                     onClick={() => {
                       setEditingTeacher(t);
-                      setForm({
+                      const next = {
                         name: t.name,
                         role: t.role,
                         email: t.email || "",
                         exp: t.exp,
                         bio: t.bio,
-                      });
+                      };
+                      setForm(next);
+                      setFormBaseline(next);
                       setFormOpen(true);
                     }}
                   >
@@ -336,7 +342,7 @@ function TeachersPage() {
             >
               Cancel
             </Button>
-            <Button onClick={saveTeacher}>{editingTeacher ? "Save changes" : "Add teacher"}</Button>
+            <Button disabled={Boolean(editingTeacher && !teacherDirty)} onClick={saveTeacher}>{editingTeacher ? "Save changes" : "Add teacher"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
