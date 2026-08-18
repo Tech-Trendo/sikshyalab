@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
+import { GoogleAnalytics } from "@/components/analytics/GoogleAnalytics";
 import { Providers } from "@/components/layout/Providers";
 import { getPageMetadata, SITE_URL } from "@/lib/seo";
 import "./globals.css";
@@ -44,6 +45,9 @@ export async function generateMetadata(): Promise<Metadata> {
     openGraph: page.openGraph,
     twitter: page.twitter,
     applicationName: SITE_NAME,
+    verification: {
+      google: "AUeQdOoRppmQeWF0FE533AQiEzVCLiBzdG-ergqevLg",
+    },
   };
 }
 
@@ -51,6 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${poppins.variable} font-body antialiased`}>
+        <GoogleAnalytics />
         <Providers>{children}</Providers>
       </body>
     </html>

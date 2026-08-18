@@ -494,7 +494,6 @@
   .bounce-slide,
   .programming-hero__float-shape,
   .programming-hero__float-shape--xy,
-  .faq-bell-decor,
   .faq-gear-decor,
   .sl-slide-up,
   .sl-slide-down,
@@ -882,6 +881,28 @@
   box-shadow: 0 16px 36px rgb(27 58 107 / 28%);
 }
 
+.sl-hero-btn--yellow.sl-enroll-cta {
+  border: 1.5px solid transparent;
+}
+
+.sl-hero-btn--yellow.sl-enroll-cta:hover {
+  background: #fad9ab;
+  border-color: #ea580c;
+  color: #ea580c;
+  box-shadow: 0 12px 24px rgb(234 88 12 / 16%);
+  filter: none;
+  transform: translateY(-2px);
+}
+
+.sl-hero-btn--yellow.sl-enroll-cta:active {
+  background: #f8cfa0;
+  border-color: #ea580c;
+  color: #ea580c;
+  box-shadow: 0 10px 20px rgb(234 88 12 / 14%);
+  filter: none;
+  transform: translateY(0);
+}
+
 .sl-hero-btn--yellow:active {
   box-shadow: 0 10px 22px rgb(27 58 107 / 28%);
 }
@@ -948,7 +969,7 @@
 }
 
 .sl-card-cta--primary {
-  border: none;
+  border: 1.5px solid transparent;
   background: oklch(75% 0.183 55.934);
   color: #fff;
   font-weight: 600;
@@ -957,6 +978,30 @@
 .sl-card-cta--primary:hover {
   filter: brightness(0.96);
   transform: translateY(-1px);
+}
+
+/* Enroll now hover — peach fill + orange outline (matches Learn more) */
+.sl-card-cta--primary.sl-enroll-cta:hover {
+  background: #fad9ab;
+  border-color: #ea580c;
+  color: #ea580c;
+  filter: none;
+  transform: translateY(-1px);
+}
+
+.sl-card-cta--primary.sl-enroll-cta:active {
+  background: #f8cfa0;
+  border-color: #ea580c;
+  color: #ea580c;
+  filter: none;
+  transform: translateY(0);
+}
+
+/* Event registration CTA: yellow by default, blue on hover. */
+.sl-event-card-cta:hover {
+  background: #1b3a6b;
+  color: #fff;
+  filter: none;
 }
 
 .sl-card-cta--primary:active {
@@ -1202,11 +1247,6 @@
   color: var(--brand-body);
 }
 
-/* FAQ bell swing */
-.faq-bell-decor {
-  transform-origin: top center;
-  animation: sl-swing 2s ease-in-out infinite;
-}
 .faq-gear-decor {
   animation: faq-gear-spin 12s linear infinite;
 }

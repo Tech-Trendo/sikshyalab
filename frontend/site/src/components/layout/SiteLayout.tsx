@@ -41,6 +41,8 @@ export function PageHero({
   eyebrow,
   className,
   flushHeader = true,
+  backgroundImage,
+  breadcrumbLabel,
 }: {
   eyebrow?: string;
   title: string;
@@ -48,16 +50,33 @@ export function PageHero({
   className?: string;
   /** Banner sits flush under the fixed navbar (no white gap). Pair with `SiteLayout flushTop`. */
   flushHeader?: boolean;
+  /** Optional photo behind the navy overlay (About Us). */
+  backgroundImage?: string;
+  /** Override the last breadcrumb (e.g. "About Us" instead of "About"). */
+  breadcrumbLabel?: string;
 }) {
   const path = usePathname() || "/";
-  const crumb = path
-    .split("/")
-    .filter(Boolean)
-    .map((s) => s.replace(/-/g, " "))
-    .map((s) => s.replace(/\b\w/g, (c) => c.toUpperCase()));
+  const crumb = breadcrumbLabel
+    ? [breadcrumbLabel]
+    : path
+        .split("/")
+        .filter(Boolean)
+        .map((s) => s.replace(/-/g, " "))
+        .map((s) => s.replace(/\b\w/g, (c) => c.toUpperCase()));
 
   return (
     <section className={cn("relative overflow-hidden bg-brand-navy", className)}>
+      {backgroundImage ? (
+        <>
+          <div
+            className="absolute inset-0 bg-cover bg-center"
+            style={{ backgroundImage: `url('${backgroundImage}')` }}
+            aria-hidden
+          />
+          <div className="absolute inset-0 bg-brand-navy/75" aria-hidden />
+          <div className="absolute inset-0 bg-black/25" aria-hidden />
+        </>
+      ) : null}
       <span
         className="pointer-events-none absolute -left-20 top-0 h-56 w-56 rounded-full bg-brand-orange/10"
         aria-hidden

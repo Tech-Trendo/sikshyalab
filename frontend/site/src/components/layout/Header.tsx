@@ -24,15 +24,6 @@ import { AnnouncementBar } from "@/components/layout/AnnouncementBar";
 import { usePublicData } from "@/hooks/usePublicData";
 import { groupCoursesByCategory } from "@/lib/course-categories";
 
-const PAGE_LINKS = [
-  { href: "/about", label: "About Us" },
-  { href: "/events", label: "Events" },
-  { href: "/career", label: "Career Services" },
-  { href: "/gallery", label: "Gallery" },
-  { href: "/faq", label: "FAQ" },
-  { href: "/verify", label: "Verify Certificate" },
-];
-
 const SOCIAL_NETWORKS = [
   { key: "facebook", label: "Facebook", Icon: Facebook },
   { key: "twitter", label: "Twitter", Icon: Twitter },
@@ -128,9 +119,7 @@ export function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [coursesOpen, setCoursesOpen] = useState(false);
-  const [pagesOpen, setPagesOpen] = useState(false);
   const [mobileCoursesOpen, setMobileCoursesOpen] = useState(false);
-  const [mobilePagesOpen, setMobilePagesOpen] = useState(false);
   const [mobileCategoryOpen, setMobileCategoryOpen] = useState<string | null>(null);
 
   const solid = !isHome || scrolled;
@@ -160,7 +149,6 @@ export function Header() {
   useEffect(() => {
     setOpen(false);
     setCoursesOpen(false);
-    setPagesOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -233,7 +221,6 @@ export function Header() {
                       aria-haspopup="true"
                       onClick={() => {
                         setCoursesOpen((v) => !v);
-                        setPagesOpen(false);
                       }}
                       className={cn(
                         NAV_LINK,
@@ -291,56 +278,6 @@ export function Header() {
                 );
               }
 
-              if (l.label === "Pages") {
-                return (
-                  <div
-                    key={l.href}
-                    className="relative"
-                    onMouseEnter={() => setPagesOpen(true)}
-                    onMouseLeave={() => setPagesOpen(false)}
-                  >
-                    <button
-                      type="button"
-                      aria-expanded={pagesOpen}
-                      aria-haspopup="true"
-                      onClick={() => {
-                        setPagesOpen((v) => !v);
-                        setCoursesOpen(false);
-                      }}
-                      className={cn(
-                        NAV_LINK,
-                        PAGE_LINKS.some((p) => isActive(p.href))
-                          ? "text-brand-orange"
-                          : "text-brand-navy hover:text-brand-orange",
-                      )}
-                    >
-                      Pages
-                      <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", pagesOpen && "rotate-180")} />
-                    </button>
-                    {pagesOpen && (
-                      <div className="absolute left-1/2 top-full z-50 w-[min(92vw,36rem)] -translate-x-1/2 pt-2">
-                        <div className="overflow-hidden rounded-xl border border-brand-border bg-white p-3 shadow-xl">
-                          <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
-                            {PAGE_LINKS.map((p) => (
-                              <Link
-                                key={p.href}
-                                href={p.href}
-                                className={cn(
-                                  "block min-h-11 rounded-lg px-3 py-2.5 text-sm font-semibold text-brand-navy hover:bg-brand-lighten-02 hover:text-brand-orange",
-                                  isActive(p.href) && "text-brand-orange",
-                                )}
-                              >
-                                {p.label}
-                              </Link>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-
               return (
                 <Link
                   key={l.href}
@@ -362,7 +299,7 @@ export function Header() {
           <div className="flex items-center justify-self-end gap-2 sm:gap-3">
             <Link
               href="/login"
-              className="hidden h-11 min-h-11 items-center justify-center rounded-[5px] bg-brand-orange px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgb(245_166_35/28%)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-brand-navy hover:shadow-[0_14px_28px_rgb(27_58_107/28%)] lg:inline-flex xl:px-6"
+              className="sl-hero-btn sl-hero-btn--yellow sl-enroll-cta hidden !h-11 !min-h-11 !px-5 !text-sm lg:inline-flex xl:!px-6"
             >
               Login
             </Link>
@@ -502,50 +439,6 @@ export function Header() {
                     );
                   }
 
-                  if (l.label === "Pages") {
-                    return (
-                      <div key={l.href} className="rounded-xl">
-                        <button
-                          type="button"
-                          onClick={() => setMobilePagesOpen((v) => !v)}
-                          className={cn(
-                            "flex w-full items-center justify-between rounded-xl px-4 py-3 text-[15px] font-semibold",
-                            PAGE_LINKS.some((p) => isActive(p.href))
-                              ? "bg-brand-lighten-01 text-brand-orange"
-                              : "text-brand-navy hover:bg-brand-lighten-02 hover:text-brand-orange",
-                          )}
-                        >
-                          Pages
-                          <ChevronDown
-                            className={cn(
-                              "h-4 w-4 transition-transform",
-                              mobilePagesOpen && "rotate-180",
-                            )}
-                          />
-                        </button>
-                        {mobilePagesOpen && (
-                          <div className="mb-1 ml-3 space-y-1 border-l border-brand-border pl-3">
-                            {PAGE_LINKS.map((p) => (
-                              <Link
-                                key={p.href}
-                                href={p.href}
-                                onClick={() => setOpen(false)}
-                                className={cn(
-                                  "block min-h-11 rounded-lg px-3 py-2.5 text-sm font-semibold",
-                                  isActive(p.href)
-                                    ? "text-brand-orange"
-                                    : "text-brand-navy hover:text-brand-orange",
-                                )}
-                              >
-                                {p.label}
-                              </Link>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
-
                   return (
                     <Link
                       key={l.href}
@@ -565,7 +458,7 @@ export function Header() {
                 <Link
                   href="/login"
                   onClick={() => setOpen(false)}
-                  className="mt-2 flex h-12 min-h-12 w-full items-center justify-center rounded-[5px] bg-brand-orange px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgb(245_166_35/28%)] transition-all duration-300 hover:bg-brand-navy hover:shadow-[0_14px_28px_rgb(27_58_107/28%)]"
+                  className="sl-hero-btn sl-hero-btn--yellow sl-enroll-cta mt-2 !h-12 !min-h-12 w-full !text-sm"
                 >
                   Login
                 </Link>

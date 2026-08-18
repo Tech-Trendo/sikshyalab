@@ -14,7 +14,6 @@ const PLATFORM_LINKS = [
   { href: "/about", label: "About" },
   { href: "/courses", label: "Courses" },
   { href: "/events", label: "Events" },
-  { href: "/career", label: "Career Services" },
   { href: "/faq", label: "FAQ" },
 ];
 
