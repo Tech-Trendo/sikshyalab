@@ -77,6 +77,10 @@ type MappedCourse = {
   metaTitle?: string;
   metaDescription?: string;
   metaKeywords?: string;
+  ogImage?: string;
+  whyThisCourseTitle?: string;
+  highlights?: { heading: string; description: string }[];
+  faqs?: { id?: string; question: string; answer: string }[];
   outcomes: string[];
   isPublished?: boolean;
   _uuid?: string;
@@ -104,6 +108,7 @@ type MappedCourse = {
       videoUrl?: string;
       notes?: string;
       description?: string;
+      topics?: { id?: string; title: string }[];
     }[];
   }[];
 };
@@ -551,13 +556,6 @@ export function mapDashboardBundle(bundle: DashboardBundle): MappedDashboardData
     };
   });
 
-  const seoByCoursePath = new Map<string, ApiSeoRow>();
-  for (const p of bundle.seoPages) {
-    const path = p.canonical_url || (p.slug ? `/${p.slug}` : "");
-    if (path.startsWith("/courses/")) seoByCoursePath.set(path, p);
-    else if (p.slug) seoByCoursePath.set(`/courses/${p.slug}`, p);
-  }
-
   const courses: MappedCourse[] = bundle.courses.map((c) => {
     const chaptersRaw = (L.chaptersByCourse.get(String(c.id)) || []).sort(
       (a, b) => (a.order ?? 0) - (b.order ?? 0),
@@ -594,6 +592,13 @@ export function mapDashboardBundle(bundle: DashboardBundle): MappedDashboardData
             videoUrl: p.video_url || "",
             notes: p.notes || "",
             description: p.description || "",
+            topics: (p.topics || [])
+              .slice()
+              .sort((a, b) => ((a as { order?: number }).order ?? 0) - ((b as { order?: number }).order ?? 0))
+              .map((t, ti) => ({
+                id: t.id != null ? String(t.id) : `topic-${p.id}-${ti}`,
+                title: t.title,
+              })),
           })),
       };
     });
@@ -607,8 +612,6 @@ export function mapDashboardBundle(bundle: DashboardBundle): MappedDashboardData
     const enrolledInCourse = bundle.batches
       .filter((b) => String(b.course) === String(c.id) || b.course_title === c.title)
       .reduce((n, b) => n + (b.enrolled_count || 0), 0);
-
-    const seo = seoByCoursePath.get(`/courses/${c.slug}`);
 
     const categoryNames =
       Array.isArray(c.category_names) && c.category_names.length
@@ -631,10 +634,12 @@ export function mapDashboardBundle(bundle: DashboardBundle): MappedDashboardData
       instructor: c.primary_instructor?.name || "—",
       cover: resolveCourseThumbnail(c.thumbnail, c.updated_at),
       tagline: c.short_description || "",
-      description: c.description || c.short_description || "",
-      metaTitle: seo?.meta_title || undefined,
-      metaDescription: seo?.meta_description || undefined,
-      metaKeywords: seo?.meta_keywords || undefined,
+      description:
+        typeof c.description === "string" ? c.description : c.short_description || "",
+      metaTitle: c.meta_title || undefined,
+      metaDescription: c.meta_description || undefined,
+      ogImage: c.og_image || undefined,
+      whyThisCourseTitle: c.why_this_course_title || undefined,
       outcomes: Array.isArray(c.learning_outcomes) ? c.learning_outcomes : [],
       isPublished:
         Boolean(c.is_published) &&

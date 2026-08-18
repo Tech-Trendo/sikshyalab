@@ -21,6 +21,10 @@ export type Course = {
   metaTitle?: string;
   metaDescription?: string;
   metaKeywords?: string;
+  ogImage?: string;
+  whyThisCourseTitle?: string;
+  highlights?: { heading: string; description: string }[];
+  faqs?: { id?: string; question: string; answer: string }[];
   outcomes: string[];
   /** Visible on the public site when true */
   isPublished?: boolean;
@@ -50,6 +54,7 @@ export type Course = {
       videoUrl?: string;
       notes?: string;
       description?: string;
+      topics?: { id?: string; title: string }[];
     }[];
   }[];
 };

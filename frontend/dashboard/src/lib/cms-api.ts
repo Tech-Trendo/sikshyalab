@@ -228,13 +228,14 @@ async function cmsFormMutate<T>(path: string, method: string, form: FormData): P
   }
 }
 
-function withResolvedMedia<T extends { image?: string | null; logo?: string | null; cover_image?: string | null; featured_image?: string | null; avatar?: string | null }>(
+function withResolvedMedia<T extends { image?: string | null; logo?: string | null; cover_image?: string | null; og_image?: string | null; featured_image?: string | null; avatar?: string | null }>(
   row: T,
 ): T {
   const next = { ...row };
   if ("image" in next && next.image) next.image = resolveMediaUrl(next.image);
   if ("logo" in next && next.logo) next.logo = resolveMediaUrl(next.logo);
   if ("cover_image" in next && next.cover_image) next.cover_image = resolveMediaUrl(next.cover_image);
+  if ("og_image" in next && next.og_image) next.og_image = resolveMediaUrl(next.og_image);
   if ("featured_image" in next && next.featured_image) {
     next.featured_image = resolveMediaUrl(next.featured_image);
   }
@@ -289,6 +290,16 @@ export type CmsFaq = {
   is_published: boolean;
 };
 
+export type CmsBlogSection = {
+  id?: string;
+  blog_post?: string;
+  title?: string | null;
+  description: string;
+  order?: number;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type CmsBlogPost = {
   id: string | number;
   title: string;
@@ -298,9 +309,29 @@ export type CmsBlogPost = {
   author?: number | null;
   author_name?: string;
   cover_image?: string | null;
+  category?: string;
+  tags?: unknown;
   is_published: boolean;
   published_at?: string | null;
+  views_count?: number;
+  order?: number;
+  meta_title?: string | null;
+  meta_description?: string | null;
+  og_image?: string | null;
+  sections?: CmsBlogSection[];
 };
+
+/** Nested JSON fields (sections, highlights) must not be String()-coerced. */
+export function appendPayloadToForm(form: FormData, payload: Record<string, unknown>) {
+  for (const [key, value] of Object.entries(payload)) {
+    if (value === undefined || value === null) continue;
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      form.append(key, String(value));
+      continue;
+    }
+    form.append(key, JSON.stringify(value));
+  }
+}
 
 export type CmsEvent = {
   id: string | number;
@@ -315,6 +346,9 @@ export type CmsEvent = {
   end_datetime?: string | null;
   cover_image?: string | null;
   is_published: boolean;
+  meta_title?: string | null;
+  meta_description?: string | null;
+  og_image?: string | null;
 };
 
 export type CmsHomepageFeature = {
@@ -419,20 +453,6 @@ export type CmsPartner = {
   is_published?: boolean;
 };
 
-export type CmsCareer = {
-  id: string | number;
-  title: string;
-  slug: string;
-  department?: string;
-  location?: string;
-  employment_type?: string;
-  description?: string;
-  requirements?: string;
-  is_active?: boolean;
-  is_published?: boolean;
-  order?: number;
-};
-
 export type CmsAnnouncement = {
   id: string | number;
   title: string;
@@ -480,6 +500,10 @@ export const cmsApi = {
   listBlogPosts: async () => {
     const rows = await cmsList<CmsBlogPost>("/blog/");
     return rows.map((r) => withResolvedMedia(r));
+  },
+  getBlogPost: async (slug: string) => {
+    const row = await cmsGet<CmsBlogPost>(`/blog/${slug}/`);
+    return row ? withResolvedMedia(row) : null;
   },
   updateBlogPost: (slug: string, payload: Partial<CmsBlogPost>) =>
     cmsMutate<CmsBlogPost>(`/blog/${slug}/`, "PATCH", payload),
@@ -537,13 +561,6 @@ export const cmsApi = {
   updatePartnerForm: (id: string | number, form: FormData) =>
     cmsFormMutate<CmsPartner>(`/partners/${id}/`, "PATCH", form),
   deletePartner: (id: string | number) => cmsMutate<void>(`/partners/${id}/`, "DELETE"),
-
-  listCareers: () => cmsList<CmsCareer>("/careers/"),
-  createCareer: (payload: Partial<CmsCareer>) => cmsMutate<CmsCareer>("/careers/", "POST", payload),
-  updateCareer: (slug: string, payload: Partial<CmsCareer>) =>
-    cmsMutate<CmsCareer>(`/careers/${encodeURIComponent(slug)}/`, "PATCH", payload),
-  deleteCareer: (slug: string) =>
-    cmsMutate<void>(`/careers/${encodeURIComponent(slug)}/`, "DELETE"),
 
   listAnnouncements: () => cmsList<CmsAnnouncement>("/announcements/"),
   createAnnouncement: (payload: Partial<CmsAnnouncement>) =>
@@ -621,6 +638,5 @@ export const cmsKeys = {
   pages: ["cms", "pages"] as const,
   gallery: ["cms", "gallery"] as const,
   partners: ["cms", "partners"] as const,
-  careers: ["cms", "careers"] as const,
   announcements: ["cms", "announcements"] as const,
 };

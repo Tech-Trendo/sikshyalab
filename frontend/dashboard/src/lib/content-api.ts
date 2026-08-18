@@ -70,6 +70,13 @@ export type ContentChapter = {
   is_published?: boolean;
 };
 
+export type ContentTopic = {
+  id: string;
+  part?: string;
+  title: string;
+  order?: number;
+};
+
 export type ContentPart = {
   id: string;
   chapter: string;
@@ -82,6 +89,7 @@ export type ContentPart = {
   order?: number;
   is_published?: boolean;
   estimated_minutes?: number;
+  topics?: ContentTopic[];
 };
 
 export type PartResource = {
@@ -196,6 +204,17 @@ export const contentApi = {
   },
 
   deletePart: (id: string) => mutate<void>(`/content/parts/${id}/`, "DELETE"),
+
+  createTopic: (partId: string, payload: { title: string; order?: number }) =>
+    mutate<ContentTopic>(`/content/parts/${partId}/topics/`, "POST", {
+      title: payload.title,
+      ...(payload.order != null ? { order: payload.order } : {}),
+    }),
+
+  updateTopic: (id: string, payload: Partial<{ title: string; order: number }>) =>
+    mutate<ContentTopic>(`/content/topics/${id}/`, "PATCH", payload),
+
+  deleteTopic: (id: string) => mutate<void>(`/content/topics/${id}/`, "DELETE"),
 
   uploadPartResource: (payload: { part: string; title: string; type: "video" | "notes" | "pdf" | "other"; file: File }) => {
     const form = new FormData();

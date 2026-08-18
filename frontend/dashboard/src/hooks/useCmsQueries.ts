@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { cmsApi, cmsKeys, type CmsCourseReview, type CmsTestimonial } from "@/lib/cms-api";
+import { appendPayloadToForm, cmsApi, cmsKeys, type CmsCourseReview, type CmsTestimonial } from "@/lib/cms-api";
 
 export function useTestimonialsQuery() {
   return useQuery({
@@ -124,13 +124,13 @@ export function useCreateBlogMutation() {
     mutationFn: async (input: {
       payload: Parameters<typeof cmsApi.createBlogPost>[0];
       coverFile?: File;
+      ogFile?: File;
     }) => {
-      if (input.coverFile) {
+      if (input.coverFile || input.ogFile) {
         const form = new FormData();
-        Object.entries(input.payload).forEach(([k, v]) => {
-          if (v !== undefined && v !== null) form.append(k, String(v));
-        });
-        form.append("cover_image", input.coverFile);
+        appendPayloadToForm(form, input.payload as Record<string, unknown>);
+        if (input.coverFile) form.append("cover_image", input.coverFile);
+        if (input.ogFile) form.append("og_image", input.ogFile);
         const result = await cmsApi.createBlogPostForm(form);
         if (!result.ok) throw new Error(result.error);
         return result.data;
@@ -150,17 +150,18 @@ export function useUpdateBlogMutation() {
       slug,
       patch,
       coverFile,
+      ogFile,
     }: {
       slug: string;
       patch: Parameters<typeof cmsApi.updateBlogPost>[1];
       coverFile?: File;
+      ogFile?: File;
     }) => {
-      if (coverFile) {
+      if (coverFile || ogFile) {
         const form = new FormData();
-        Object.entries(patch).forEach(([k, v]) => {
-          if (v !== undefined && v !== null) form.append(k, String(v));
-        });
-        form.append("cover_image", coverFile);
+        appendPayloadToForm(form, patch as Record<string, unknown>);
+        if (coverFile) form.append("cover_image", coverFile);
+        if (ogFile) form.append("og_image", ogFile);
         const result = await cmsApi.updateBlogPostForm(slug, form);
         if (!result.ok) throw new Error(result.error);
         return result.data;
@@ -177,13 +178,13 @@ export function useCreateEventMutation() {
     mutationFn: async (input: {
       payload: Parameters<typeof cmsApi.createEvent>[0];
       coverFile?: File;
+      ogFile?: File;
     }) => {
-      if (input.coverFile) {
+      if (input.coverFile || input.ogFile) {
         const form = new FormData();
-        Object.entries(input.payload).forEach(([k, v]) => {
-          if (v !== undefined && v !== null) form.append(k, String(v));
-        });
-        form.append("cover_image", input.coverFile);
+        appendPayloadToForm(form, input.payload as Record<string, unknown>);
+        if (input.coverFile) form.append("cover_image", input.coverFile);
+        if (input.ogFile) form.append("og_image", input.ogFile);
         const result = await cmsApi.createEventForm(form);
         if (!result.ok) throw new Error(result.error);
         return result.data;
@@ -201,17 +202,18 @@ export function useUpdateEventMutation() {
       slug,
       patch,
       coverFile,
+      ogFile,
     }: {
       slug: string;
       patch: Parameters<typeof cmsApi.updateEvent>[1];
       coverFile?: File;
+      ogFile?: File;
     }) => {
-      if (coverFile) {
+      if (coverFile || ogFile) {
         const form = new FormData();
-        Object.entries(patch).forEach(([k, v]) => {
-          if (v !== undefined && v !== null) form.append(k, String(v));
-        });
-        form.append("cover_image", coverFile);
+        appendPayloadToForm(form, patch as Record<string, unknown>);
+        if (coverFile) form.append("cover_image", coverFile);
+        if (ogFile) form.append("og_image", ogFile);
         const result = await cmsApi.updateEventForm(slug, form);
         if (!result.ok) throw new Error(result.error);
         return result.data;

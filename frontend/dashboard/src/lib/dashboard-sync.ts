@@ -4,7 +4,7 @@
  */
 
 import { getAccessToken } from "./api";
-import { batchEndpoints, courseEndpoints, coursePublicPath } from "./api-endpoints";
+import { batchEndpoints, courseEndpoints } from "./api-endpoints";
 import {
   apiMutate,
   apiMutateDetailed,
@@ -342,8 +342,11 @@ export async function runDashboardSync(action: SyncAction): Promise<boolean | st
       const body: Record<string, unknown> = {};
       const p = action.patch;
       if (p.title) body.title = p.title;
-      if (p.tagline || p.description) body.short_description = p.tagline || p.description;
-      if (p.description) body.description = p.description;
+      if (p.slug != null && String(p.slug).trim()) {
+        body.slug = String(p.slug).trim().toLowerCase();
+      }
+      if (p.tagline) body.short_description = p.tagline;
+      if (p.description != null) body.description = p.description;
       if (p.price != null) body.price = p.price;
       if (p.level) body.level = String(p.level).toUpperCase();
       if (p.mode) {
@@ -382,31 +385,30 @@ export async function runDashboardSync(action: SyncAction): Promise<boolean | st
         body.is_published = false;
         body.status = "DRAFT";
       }
-      let ok = Object.keys(body).length === 0
+      if (p.whyThisCourseTitle != null) {
+        body.why_this_course_title = String(p.whyThisCourseTitle);
+      }
+      if (Array.isArray(p.highlights)) {
+        body.highlights = p.highlights;
+      }
+      if (Array.isArray(p.faqs)) {
+        body.faqs = (p.faqs as Array<{ question?: string; answer?: string }>)
+          .map((f, i) => ({
+            question: String(f.question || "").trim(),
+            answer: String(f.answer || "").trim(),
+            order: i,
+          }))
+          .filter((f) => f.question && f.answer);
+      }
+      if (typeof p.metaTitle === "string" && p.metaTitle.trim()) {
+        body.meta_title = p.metaTitle.trim();
+      }
+      if (typeof p.metaDescription === "string" && p.metaDescription.trim()) {
+        body.meta_description = p.metaDescription.trim();
+      }
+      return Object.keys(body).length === 0
         ? true
         : !!(await apiMutate(courseEndpoints.detail(action.slug), "PATCH", body));
-
-      const hasSeo =
-        p.metaTitle != null ||
-        p.metaDescription != null ||
-        p.metaKeywords != null ||
-        p.title != null;
-      if (hasSeo) {
-        const seoBody: Record<string, unknown> = {
-          canonical_url: coursePublicPath(action.slug),
-          slug: action.slug,
-          is_indexed: true,
-        };
-        if (p.metaTitle != null) seoBody.meta_title = p.metaTitle;
-        else if (p.title) seoBody.meta_title = p.title;
-        if (p.metaDescription != null) seoBody.meta_description = p.metaDescription;
-        if (p.metaKeywords != null) seoBody.meta_keywords = p.metaKeywords;
-        if (p.metaTitle != null || p.title) seoBody.og_title = p.metaTitle || p.title;
-        if (p.metaDescription != null) seoBody.og_description = p.metaDescription;
-        const seoOk = !!(await apiMutate(courseEndpoints.seo(action.slug), "PATCH", seoBody));
-        ok = ok && seoOk;
-      }
-      return ok;
     }
     case "createCourse": {
       const payload = { ...action.payload };

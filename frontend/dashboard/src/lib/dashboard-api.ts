@@ -90,7 +90,7 @@ export async function apiList<T>(path: string): Promise<T[]> {
   }
 }
 
-async function apiGet<T>(path: string): Promise<T | null> {
+export async function apiGet<T>(path: string): Promise<T | null> {
   if (!getAccessToken()) return null;
   try {
     const controller = new AbortController();
@@ -244,9 +244,16 @@ export type ApiCourseRow = {
   price?: string | number;
   discount_price?: string | number | null;
   thumbnail?: string | null;
+  banner?: string | null;
   short_description?: string;
   description?: string;
   learning_outcomes?: string[];
+  why_this_course_title?: string | null;
+  highlights?: Array<{ heading?: string; description?: string; title?: string; body?: string }>;
+  faqs?: Array<{ id?: string; question: string; answer: string; order?: number }>;
+  meta_title?: string | null;
+  meta_description?: string | null;
+  og_image?: string | null;
   primary_instructor?: { name?: string } | null;
   status?: string;
   is_published?: boolean;
@@ -339,6 +346,7 @@ export type ApiChapterRow = {
     description?: string;
     video_duration_seconds?: number | null;
     estimated_minutes?: number | null;
+    topics?: { id?: string | number; title: string; order?: number }[];
   }[];
 };
 export type ApiPartResourceRow = {

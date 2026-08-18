@@ -566,6 +566,27 @@ export async function uploadCourseThumbnail(slug: string, file: File): Promise<s
   }
 }
 
+/** Multipart PATCH of optional og_image on the course object. Omit unless the user picked a file. */
+export async function uploadCourseOgImage(slug: string, file: File): Promise<string | null> {
+  const trimmed = (slug || "").trim();
+  if (!trimmed) return null;
+  try {
+    const form = new FormData();
+    form.append("og_image", file);
+    const res = await authedFetch(courseEndpoints.detail(trimmed), {
+      method: "PATCH",
+      body: form,
+      headers: { Accept: "application/json" },
+    });
+    if (!res || !res.ok) return null;
+    const body = await parseJson(res);
+    const data = unwrapData<any>(body) ?? body;
+    return data?.og_image || data?.og_image_url || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchDashboardOverview(): Promise<Record<string, unknown> | null> {
   const res = await apiFetch("/analytics/dashboard/");
   if (!res || !res.ok) return null;

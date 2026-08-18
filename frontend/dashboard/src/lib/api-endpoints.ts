@@ -39,6 +39,10 @@ export const teacherEndpoints = {
 };
 
 export const contentEndpoints = {
+  blogPostSections: (postId: string | number) =>
+    withSlash(`/content/blog-posts/${encodeURIComponent(String(postId))}/sections`),
+  blogSectionDetail: (sectionId: string | number) =>
+    withSlash(`/content/blog-sections/${encodeURIComponent(String(sectionId))}`),
   resources: () => withSlash("/content/resources"),
   resourceDetail: (id: string) => withSlash(`/content/resources/${encodeURIComponent(id)}`),
   resourceStream: (id: string) =>
