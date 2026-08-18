@@ -1,8 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import Image from "next/image";
-import { ArrowLeft, ArrowRight, Star } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Section,
@@ -13,6 +12,8 @@ import {
 import { DynamicHeading } from "@/components/brand/DynamicHeading";
 import RevealOnScroll, { THEME_DELAY } from "@/components/motion/RevealOnScroll";
 import { usePublicData } from "@/hooks/usePublicData";
+import { TestimonialCard } from "@/components/testimonials/TestimonialCard";
+import type { SiteTestimonial } from "@/lib/testimonials";
 
 const PAGE_SIZE = 2;
 const AUTO_MS = 4000;
@@ -57,74 +58,13 @@ function NavBtn({
   );
 }
 
-type CardItem = {
-  id: string;
-  name: string;
-  role: string;
-  quote: string;
-  avatar?: string;
-  rating: number;
-};
-
-function TestimonialCard({ t }: { t: CardItem }) {
-  const stars = Math.min(5, Math.max(1, Math.round(t.rating || 5)));
-
-  return (
-    <article className="flex h-[240px] w-full max-w-[450px] flex-col rounded-[12px] bg-white px-7 py-6 shadow-[0_10px_40px_rgba(0,0,0,0.06)]">
-      <div className="mb-3 flex shrink-0 gap-1">
-        {Array.from({ length: stars }).map((_, si) => (
-          <Star
-            key={si}
-            className="h-3.5 w-3.5 fill-brand-orange text-brand-orange"
-          />
-        ))}
-      </div>
-      <p className="min-h-0 flex-1 overflow-hidden text-[14px] leading-[1.65] text-gray-500 line-clamp-4">
-        {t.quote}
-      </p>
-      <div className="mt-5 flex shrink-0 items-center gap-3 border-t border-transparent pt-1">
-        {t.avatar ? (
-          <Image
-            src={t.avatar}
-            alt={t.name}
-            width={48}
-            height={48}
-            className="h-12 w-12 shrink-0 rounded-full object-cover"
-          />
-        ) : (
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-brand-navy text-sm font-bold text-white">
-            {t.name.slice(0, 1).toUpperCase()}
-          </span>
-        )}
-        <div className="min-w-0">
-          <p className="truncate font-heading text-base font-bold leading-snug text-heading">
-            {t.name}
-          </p>
-          <p className="mt-0.5 truncate text-xs leading-snug text-gray-400">{t.role}</p>
-        </div>
-      </div>
-    </article>
-  );
-}
-
 /**
  * Testimonials — always 2 card slots; when many exist, auto-round pages in place.
  * Eyebrow / heading come from CMS Site settings (testimonials_*).
  */
 export function Testimonials() {
   const { testimonials, settings } = usePublicData();
-  const list: CardItem[] = useMemo(
-    () =>
-      testimonials.map((t, i) => ({
-        id: "id" in t && t.id != null ? String(t.id) : `${t.name}-${i}`,
-        name: t.name,
-        role: t.role,
-        quote: t.quote,
-        avatar: t.avatar || undefined,
-        rating: t.rating ?? 5,
-      })),
-    [testimonials],
-  );
+  const list = testimonials;
 
   const eyebrow = settings?.testimonials_eyebrow?.trim() || "";
   const heading = settings?.testimonials_heading?.trim() || "";
@@ -242,8 +182,8 @@ export function Testimonials() {
                   transition={{ duration: 0.35, ease: "easeOut" }}
                   className="grid grid-cols-1 gap-[5px] md:grid-cols-2"
                 >
-                  {visible.map((t) => (
-                    <TestimonialCard key={t.id} t={t} />
+                  {visible.map((t: SiteTestimonial) => (
+                    <TestimonialCard key={t.id} testimonial={t} />
                   ))}
                 </motion.div>
               </AnimatePresence>
