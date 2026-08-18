@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   fetchAnnouncements,
   fetchBanners,
-  fetchCareers,
   fetchFeaturedCourses,
   fetchPublicBlog,
   fetchPublicCategories,
@@ -17,11 +16,13 @@ import {
   fetchUpcomingBatches,
 } from "@/lib/public-api";
 import { faqTabs, type FaqItem } from "@/lib/data";
+import { parseAboutCms } from "@/lib/about-cms";
 import {
   buildSiteStats,
   groupFaqsByCategory,
   mapApiCategories,
 } from "@/lib/public-mappers";
+import { mapPublicTestimonialRow } from "@/lib/testimonials";
 import type { Course } from "@/lib/mock";
 import { resolveMediaUrl } from "@/lib/env";
 import { resolveCourseThumbnail } from "@/lib/course-media";
@@ -58,8 +59,32 @@ export function mapPublicCourse(c: CourseApiRow, chapters?: Course["chapters"]):
       ? c.chapters
       : [];
   const outcomes = Array.isArray(c.learning_outcomes) ? c.learning_outcomes : [];
+  const whyThisCourseTitle = String(c.why_this_course_title || "").trim();
+  const highlights = Array.isArray(c.highlights)
+    ? c.highlights
+        .map((item) => {
+          if (!item || typeof item !== "object") return null;
+          const heading = String(item.heading || item.title || "").trim();
+          const description = String(item.description || item.body || "").trim();
+          if (!heading && !description) return null;
+          return { heading, description };
+        })
+        .filter((item): item is { heading: string; description: string } => item != null)
+    : [];
+  const faqs = Array.isArray(c.faqs)
+    ? c.faqs
+        .map((f) => ({
+          id: f.id != null ? String(f.id) : undefined,
+          question: String(f.question || "").trim(),
+          answer: String(f.answer || "").trim(),
+          order: f.order ?? 0,
+        }))
+        .filter((f) => f.question && f.answer)
+        .sort((a, b) => a.order - b.order)
+    : [];
 
   return {
+    id: c.id ? String(c.id) : undefined,
     slug: c.slug,
     title: c.title,
     category,
@@ -83,6 +108,9 @@ export function mapPublicCourse(c: CourseApiRow, chapters?: Course["chapters"]):
     tagline: c.short_description || "",
     description: c.description || c.short_description || "",
     outcomes,
+    whyThisCourseTitle: whyThisCourseTitle || undefined,
+    highlights: highlights.length ? highlights : undefined,
+    faqs: faqs.length ? faqs : undefined,
     chapters: normalizedChapters,
   };
 }
@@ -99,7 +127,6 @@ export const publicKeys = {
   partners: ["public", "partners"] as const,
   settings: ["public", "settings"] as const,
   banners: ["public", "banners"] as const,
-  careers: ["public", "careers"] as const,
   aboutPage: ["public", "about-page"] as const,
   contactPage: ["public", "contact-page"] as const,
   upcomingBatches: ["public", "upcoming-batches"] as const,
@@ -111,10 +138,8 @@ export function usePublicData() {
   const settingsQ = useQuery({
     queryKey: publicKeys.settings,
     queryFn: fetchSiteSettings,
-    // CMS edits in dashboard should reflect immediately on the public site.
-    // Keeping this low avoids "I edited but it didn't change" confusion.
-    staleTime: 0,
-    refetchOnWindowFocus: true,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const bannersQ = useQuery({
@@ -164,14 +189,7 @@ export function usePublicData() {
     queryKey: publicKeys.testimonials,
     queryFn: async () => {
       const rows = await fetchPublicTestimonials();
-      return rows.map((t) => ({
-        id: String(t.id),
-        name: t.name,
-        role: t.role || t.organization || "Graduate",
-        quote: t.content,
-        avatar: resolveMediaUrl(t.avatar) || "",
-        rating: t.rating ?? 5,
-      }));
+      return rows.map(mapPublicTestimonialRow);
     },
     staleTime: 60_000,
   });
@@ -279,8 +297,8 @@ export function usePublicData() {
         }))
         .filter((p) => Boolean(p.logo));
     },
-    staleTime: 15_000,
-    refetchOnWindowFocus: true,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const announcementsQ = useQuery({
@@ -292,21 +310,6 @@ export function usePublicData() {
         title: a.title,
         content: a.content,
         priority: a.priority,
-      }));
-    },
-    staleTime: 60_000,
-  });
-
-  const careersQ = useQuery({
-    queryKey: publicKeys.careers,
-    queryFn: async () => {
-      const rows = await fetchCareers();
-      return rows.map((j) => ({
-        title: j.title,
-        type: j.employment_type || "Full-time",
-        location: j.location || "Remote",
-        exp: j.department || "—",
-        description: j.description,
       }));
     },
     staleTime: 60_000,
@@ -375,6 +378,8 @@ export function usePublicData() {
     email: settings?.contact_email || "",
     phone: settings?.contact_phone || "",
     address: settings?.address || "",
+    latitude: settings?.latitude ?? null,
+    longitude: settings?.longitude ?? null,
   };
 
   const heroBanner = bannersQ.data?.[0];
@@ -414,7 +419,6 @@ export function usePublicData() {
       category: "Partners",
     })),
     announcements: announcementsQ.data ?? [],
-    careers: careersQ.data ?? [],
     settings,
     contact,
     hero,
@@ -426,14 +430,19 @@ export function usePublicData() {
     },
     aboutPage: aboutPageQ.data,
     contactPage: contactPageQ.data,
-    aboutBenefits:
-      aboutPageQ.data?.content
-        ? aboutPageQ.data.content
+    aboutBenefits: (() => {
+      const cms = parseAboutCms(aboutPageQ.data?.content);
+      if (cms.pillars.some((p) => p.title || p.description)) {
+        return cms.pillars.map((p) => p.title).filter(Boolean);
+      }
+      return cms.intro
+        ? cms.intro
             .split(/\n+/)
             .map((line) => line.replace(/^[-•*]\s*/, "").trim())
             .filter(Boolean)
             .slice(0, 6)
-        : [],
+        : [];
+    })(),
     stats,
     upcomingBatches,
     loading:
@@ -446,7 +455,6 @@ export function usePublicData() {
       faqsQ.isLoading ||
       galleryQ.isLoading ||
       partnersQ.isLoading ||
-      careersQ.isLoading ||
       batchesQ.isLoading ||
       aboutPageQ.isLoading ||
       contactPageQ.isLoading ||

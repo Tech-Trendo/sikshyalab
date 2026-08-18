@@ -45,7 +45,9 @@ export type Testimonial = {
 export const navLinks = [
   { href: "/", label: "Home" },
   { href: "/courses", label: "Courses" },
-  { href: "/about", label: "Pages" },
+  { href: "/about", label: "About Us" },
+  { href: "/events", label: "Events" },
+  { href: "/verify", label: "Verify" },
   { href: "/blog", label: "Blog" },
   { href: "/contact", label: "Contact" },
 ];

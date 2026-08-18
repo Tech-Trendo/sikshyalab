@@ -73,6 +73,7 @@ export type PublicCourse = {
   price?: string | number;
   discount_price?: string | number | null;
   thumbnail?: string | null;
+  banner?: string | null;
   short_description?: string;
   description?: string;
   learning_outcomes?: string[];
@@ -80,6 +81,12 @@ export type PublicCourse = {
   rating?: number;
   is_featured?: boolean;
   students_count?: number;
+  why_this_course_title?: string | null;
+  highlights?: Array<{ heading?: string; description?: string; title?: string; body?: string }>;
+  faqs?: Array<{ id?: string | number; question: string; answer: string; order?: number }>;
+  meta_title?: string | null;
+  meta_description?: string | null;
+  og_image?: string | null;
 };
 
 export type PublicCategory = {
@@ -99,17 +106,42 @@ export type PublicTestimonial = {
   organization?: string;
   avatar?: string | null;
   rating?: number;
+  /** Optional — not returned by current CMS serializer; reserved for course filtering */
+  course_id?: string | number | null;
+  course_slug?: string | null;
+  course_name?: string | null;
+  course_title?: string | null;
+};
+
+export type PublicBlogSection = {
+  id: string;
+  blog_post?: string;
+  title?: string | null;
+  description: string;
+  order: number;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type PublicBlog = {
+  id?: string;
   slug: string;
   title: string;
   excerpt: string;
   content?: string;
+  sections?: PublicBlogSection[];
+  author?: string | null;
   author_name?: string;
   cover_image?: string | null;
+  meta_title?: string | null;
+  meta_description?: string | null;
+  og_image?: string | null;
   category?: string;
+  tags?: unknown;
+  is_published?: boolean;
   published_at?: string | null;
+  views_count?: number;
+  order?: number;
 };
 
 export type PublicEvent = {
@@ -123,6 +155,9 @@ export type PublicEvent = {
   course?: string | null;
   course_title?: string | null;
   course_slug?: string | null;
+  meta_title?: string | null;
+  meta_description?: string | null;
+  og_image?: string | null;
 };
 
 export type PublicFaq = {
@@ -168,6 +203,8 @@ export type PublicSiteSetting = {
   contact_email?: string;
   contact_phone?: string;
   address?: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
   social_links?: Record<string, string>;
   footer_text?: string;
   features_eyebrow?: string;
@@ -195,17 +232,6 @@ export type PublicTeacherHighlight = {
   department?: string;
   bio?: string;
   blurb?: string;
-};
-
-export type PublicCareer = {
-  id: string | number;
-  title: string;
-  slug?: string;
-  department?: string;
-  location?: string;
-  employment_type?: string;
-  description?: string;
-  requirements?: string;
 };
 
 export type PublicUpcomingBatch = {
@@ -255,6 +281,53 @@ export async function fetchPublicCourse(slug: string): Promise<PublicCourse | nu
   return publicGet<PublicCourse>(`/courses/courses/${slug}/`);
 }
 
+export type PublicClassSchedule = {
+  id?: string | number;
+  date?: string;
+  class_date?: string;
+  scheduled_date?: string;
+  start_time?: string;
+  end_time?: string;
+  start?: string;
+  end?: string;
+  start_datetime?: string;
+  end_datetime?: string;
+  slots?: PublicClassSchedule[];
+};
+
+function flattenPublicClassSchedules(rows: PublicClassSchedule[]): PublicClassSchedule[] {
+  const out: PublicClassSchedule[] = [];
+  for (const row of rows) {
+    const date = row.date || row.class_date || row.scheduled_date;
+    if (Array.isArray(row.slots)) {
+      for (const slot of row.slots) {
+        if (!slot || typeof slot !== "object") continue;
+        out.push({
+          ...slot,
+          date,
+          id: slot.id,
+          start_time: slot.start_time,
+          end_time: slot.end_time,
+        });
+      }
+      continue;
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+export async function fetchCourseClassSchedules(
+  courseId: string,
+): Promise<PublicClassSchedule[]> {
+  const id = courseId.trim();
+  if (!id) return [];
+  const rows = await publicList<PublicClassSchedule>(
+    `/content/courses/${encodeURIComponent(id)}/class-schedules/`,
+  );
+  return flattenPublicClassSchedules(rows);
+}
+
 export type PublicCurriculumChapter = {
   title: string;
   description?: string;
@@ -263,6 +336,7 @@ export type PublicCurriculumChapter = {
     type?: string;
     duration?: string | null;
     is_preview?: boolean;
+    topics?: Array<{ id?: string | number; title: string; order?: number }>;
   }>;
 };
 
@@ -408,10 +482,6 @@ export async function fetchTeacherHighlights(): Promise<PublicTeacherHighlight[]
   return publicList<PublicTeacherHighlight>("/cms/teacher-highlights/?is_published=true");
 }
 
-export async function fetchCareers(): Promise<PublicCareer[]> {
-  return publicList<PublicCareer>("/cms/careers/?is_published=true&is_active=true");
-}
-
 export async function fetchUpcomingBatches(): Promise<PublicUpcomingBatch[]> {
   return publicList<PublicUpcomingBatch>("/batches/batches/upcoming/");
 }
@@ -434,21 +504,25 @@ export async function submitContactMessage(payload: {
   phone?: string;
   subject?: string;
   message: string;
-}): Promise<{ ok: boolean; message?: string }> {
+  recaptcha_token?: string;
+}): Promise<{ ok: boolean; message?: string; status?: number }> {
   try {
-    const body = {
+    const body: Record<string, string> = {
       name: payload.name.trim(),
       email: payload.email.trim(),
       phone: (payload.phone || "").trim(),
       subject: (payload.subject || "Website contact").trim() || "Website contact",
       message: payload.message.trim(),
     };
+    if (payload.recaptcha_token) {
+      body.recaptcha_token = payload.recaptcha_token;
+    }
     const res = await fetch(`${apiBase()}/cms/contact-messages/`, {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (res.ok) return { ok: true };
+    if (res.ok) return { ok: true, status: res.status };
     const errBody = await res.json().catch(() => null);
     let message = "Could not send message.";
     if (errBody && typeof errBody === "object") {
@@ -457,7 +531,18 @@ export async function submitContactMessage(payload: {
           ? (errBody as { errors: Record<string, unknown> }).errors
           : (errBody as Record<string, unknown>);
       if (bag && typeof bag === "object") {
-        for (const key of ["subject", "email", "name", "phone", "message", "non_field_errors"]) {
+        for (const key of [
+          "recaptcha_token",
+          "recaptcha",
+          "captcha",
+          "subject",
+          "email",
+          "name",
+          "phone",
+          "message",
+          "non_field_errors",
+          "detail",
+        ]) {
           const val = bag[key];
           if (Array.isArray(val) && val[0]) {
             message = String(val[0]);
@@ -473,7 +558,22 @@ export async function submitContactMessage(payload: {
         message = String((errBody as { message?: string }).message || message);
       }
     }
-    return { ok: false, message };
+    if (
+      res.status === 400 &&
+      message === "Could not send message." &&
+      errBody &&
+      typeof errBody === "object" &&
+      ("recaptcha_token" in errBody ||
+        "recaptcha" in errBody ||
+        ("errors" in errBody &&
+          typeof (errBody as { errors?: unknown }).errors === "object" &&
+          (errBody as { errors: Record<string, unknown> }).errors &&
+          ("recaptcha_token" in (errBody as { errors: Record<string, unknown> }).errors ||
+            "recaptcha" in (errBody as { errors: Record<string, unknown> }).errors)))
+    ) {
+      message = "reCAPTCHA verification failed. Please complete the checkbox and try again.";
+    }
+    return { ok: false, message, status: res.status };
   } catch {
     return { ok: false, message: "Network error. Please try again." };
   }

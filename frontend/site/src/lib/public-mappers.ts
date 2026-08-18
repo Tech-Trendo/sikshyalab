@@ -102,6 +102,8 @@ export const DEFAULT_CONTACT = {
   email: "",
   phone: "",
   address: "",
+  latitude: null as number | string | null,
+  longitude: null as number | string | null,
 };
 
 export const DEFAULT_HERO = {

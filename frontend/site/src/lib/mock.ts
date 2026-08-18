@@ -3,6 +3,8 @@
 export type Course = {
   slug: string;
   title: string;
+  /** Backend course UUID when the public API includes it */
+  id?: string;
   category: string;
   /** All category names when a course belongs to multiple */
   categories?: string[];
@@ -17,6 +19,9 @@ export type Course = {
   tagline: string;
   description: string;
   outcomes: string[];
+  whyThisCourseTitle?: string;
+  highlights?: { heading: string; description: string }[];
+  faqs?: { id?: string; question: string; answer: string; order?: number }[];
   chapters: {
     title: string;
     parts: {
@@ -26,6 +31,7 @@ export type Course = {
       videoUrl?: string;
       notes?: string;
       description?: string;
+      topics?: { id?: string; title: string }[];
     }[];
   }[];
 };

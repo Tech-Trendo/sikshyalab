@@ -1,6 +1,7 @@
 /**
  * Public SEO helpers for the Next.js marketing site.
- * Reads from Django `/api/v1/seo/lookup/` and `/api/v1/seo/sitemap/`.
+ * Generic pages use Django `/api/v1/seo/lookup/` and `/api/v1/seo/sitemap/`.
+ * Blog, Course, and Event pages use `meta_title`, `meta_description`, and `og_image` on the object.
  */
 
 import type { Metadata } from "next";
@@ -28,12 +29,19 @@ export type PublicSeoMetadata = {
 };
 
 export type SitemapApiEntry = {
+  id?: string | number;
   url_path: string;
   changefreq?: string;
   priority?: number | string;
   lastmod?: string | null;
   is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
 };
+
+export type SitemapFetchResult =
+  | { ok: true; entries: SitemapApiEntry[] }
+  | { ok: false; entries: []; error: string };
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:8081").replace(/\/$/, "");
 
@@ -78,12 +86,71 @@ export async function fetchSeoByPath(path: string): Promise<PublicSeoMetadata | 
   return seoFetch<PublicSeoMetadata>(`/seo/lookup/?${qs.toString()}`);
 }
 
-export async function fetchSeoSitemap(): Promise<SitemapApiEntry[]> {
-  const data = await seoFetch<SitemapApiEntry[] | { results?: SitemapApiEntry[] }>("/seo/sitemap/");
-  if (!data) return [];
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data.results)) return data.results;
+function sitemapRowsFromBody(body: unknown): SitemapApiEntry[] {
+  if (!body || typeof body !== "object") return [];
+  const envelope = body as { data?: unknown; results?: unknown };
+  const data = "data" in envelope ? envelope.data : body;
+  if (Array.isArray(data)) return data as SitemapApiEntry[];
+  if (data && typeof data === "object" && Array.isArray((data as { results?: unknown }).results)) {
+    return (data as { results: SitemapApiEntry[] }).results;
+  }
+  if (Array.isArray(envelope.results)) return envelope.results as SitemapApiEntry[];
   return [];
+}
+
+function sitemapTotalPages(body: unknown, rows: SitemapApiEntry[], pageSize: number): number {
+  if (!body || typeof body !== "object") return 1;
+  const meta = (body as { meta?: { total_pages?: number; next?: string | null } }).meta;
+  if (meta?.total_pages) return Number(meta.total_pages) || 1;
+  if (meta?.next) return Number.POSITIVE_INFINITY;
+  return rows.length < pageSize ? 1 : 2;
+}
+
+/**
+ * Paginated read of `/seo/sitemap/` with an explicit success/error result.
+ * Used by the HTML sitemap page (loading / empty / error states).
+ */
+export async function fetchSeoSitemapResult(options?: {
+  revalidate?: number;
+}): Promise<SitemapFetchResult> {
+  const base = typeof window !== "undefined" ? apiBase() : resolveApiBase();
+  const pageSize = 100;
+
+  try {
+    const all: SitemapApiEntry[] = [];
+    for (let page = 1; page <= 50; page += 1) {
+      const init: RequestInit & { next?: { revalidate: number } } = {
+        headers: { Accept: "application/json" },
+      };
+      if (options?.revalidate != null) {
+        init.next = { revalidate: options.revalidate };
+      } else {
+        init.cache = "no-store";
+      }
+
+      const res = await fetch(`${base}/seo/sitemap/?page=${page}&page_size=${pageSize}`, init);
+      if (!res.ok) {
+        if (all.length) break;
+        return { ok: false, entries: [], error: `Could not load sitemap (${res.status}).` };
+      }
+
+      const body = await res.json();
+      const rows = sitemapRowsFromBody(body);
+      all.push(...rows);
+
+      const totalPages = sitemapTotalPages(body, rows, pageSize);
+      if (page >= totalPages || rows.length === 0 || rows.length < pageSize) break;
+    }
+
+    return { ok: true, entries: all };
+  } catch {
+    return { ok: false, entries: [], error: "Could not load sitemap. Please try again." };
+  }
+}
+
+export async function fetchSeoSitemap(): Promise<SitemapApiEntry[]> {
+  const result = await fetchSeoSitemapResult({ revalidate: 120 });
+  return result.ok ? result.entries : [];
 }
 
 function absoluteUrl(url?: string | null): string | undefined {
@@ -164,6 +231,38 @@ export async function getPageMetadata(
 ): Promise<Metadata> {
   const seo = await fetchSeoByPath(path);
   return seoToNextMetadata(seo, { ...fallback, path });
+}
+
+export function stripToPlain(raw?: string | null, max = 160): string {
+  if (!raw) return "";
+  const text = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  if (text.length <= max) return text;
+  return `${text.slice(0, max - 1).trim()}…`;
+}
+
+/** SEO from Blog/Course/Event fields — do not call `/seo/lookup` for these models. */
+export function metadataFromEntity(
+  entity: {
+    meta_title?: string | null;
+    meta_description?: string | null;
+    og_image?: string | null;
+  } | null | undefined,
+  fallback: { title: string; description: string; path: string; image?: string | null },
+): Metadata {
+  const title = entity?.meta_title?.trim() || fallback.title;
+  const description = entity?.meta_description?.trim() || fallback.description;
+  const og = entity?.og_image || fallback.image || undefined;
+  return seoToNextMetadata(
+    {
+      meta_title: title,
+      meta_description: description,
+      og_image: og,
+      og_title: title,
+      og_description: description,
+    },
+    { title, description, path: fallback.path },
+  );
 }
 
 export { SITE_URL };
