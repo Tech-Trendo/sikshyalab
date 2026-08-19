@@ -33,7 +33,11 @@ class MediaCookieAuthentication(authentication.BaseAuthentication):
             user_id = token.get("user_id")
             if not user_id:
                 return None
-            user = User.objects.filter(pk=user_id).first()
+            user = (
+                User.objects.select_related("student_profile")
+                .filter(pk=user_id)
+                .first()
+            )
             if user is None:
                 return None
             if is_student_inactive(user):
