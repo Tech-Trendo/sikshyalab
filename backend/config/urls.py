@@ -13,9 +13,12 @@ from drf_spectacular.views import (
 )
 
 from apps.common.media_access import AuthenticatedMediaView, debug_media_serve
+from apps.seo.sitemap_views import SitemapXMLChunkView, SitemapXMLView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("sitemap.xml", SitemapXMLView.as_view(), name="sitemap-xml"),
+    path("sitemaps/<int:page>.xml", SitemapXMLChunkView.as_view(), name="sitemap-xml-chunk"),
     # OpenAPI schema & docs
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(

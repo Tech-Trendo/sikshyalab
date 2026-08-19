@@ -16,7 +16,7 @@ SECRET_KEY = config(
 
 
 # Database — PostgreSQL required
-# --------------------------------------------------------------------------
+
 DATABASES = {
     "default": {
         "ENGINE": config("DB_ENGINE", default="django.db.backends.postgresql"),
@@ -33,9 +33,8 @@ DATABASES = {
     }
 }
 
-# ---------------------------------------------------------------------------
+
 # CORS — permissive in development
-# ---------------------------------------------------------------------------
 # Do NOT use CORS_ALLOW_ALL_ORIGINS with credentials — browsers reject that combo.
 # Explicit origins + credentials so Set-Cookie / credentialed fetches work.
 CORS_ALLOW_ALL_ORIGINS = False
@@ -57,9 +56,7 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^http://172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}:(5173|8081|3000)$",
 ]
 
-# ---------------------------------------------------------------------------
 # CSRF — trust LAN origins (login / session edges)
-# ---------------------------------------------------------------------------
 CSRF_TRUSTED_ORIGINS = config(
     "CSRF_TRUSTED_ORIGINS",
     default=(
@@ -75,9 +72,9 @@ CSRF_TRUSTED_ORIGINS = config(
 
 STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
 
-# ---------------------------------------------------------------------------
+
 # Logging — verbose for our apps only (not botocore/boto3 S3 noise)
-# ---------------------------------------------------------------------------
+
 LOGGING["root"]["level"] = "INFO"  # noqa: F405
 LOGGING["loggers"]["apps"]["level"] = "DEBUG"  # noqa: F405
 LOGGING["handlers"]["console"]["level"] = "DEBUG"  # noqa: F405
@@ -97,17 +94,13 @@ LOGGING["handlers"]["file"] = {  # noqa: F405
     "level": "INFO",
     "delay": True,
 }
-# ---------------------------------------------------------------------------
 # DRF — browsable API enabled
-# ---------------------------------------------------------------------------
 REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] = (  # noqa: F405
     "rest_framework.renderers.JSONRenderer",
     "rest_framework.renderers.BrowsableAPIRenderer",
 )
 
-# ---------------------------------------------------------------------------
 # Optional debug toolbar
-# ---------------------------------------------------------------------------
 if config("ENABLE_DEBUG_TOOLBAR", default=False, cast=bool):
     INSTALLED_APPS += ["debug_toolbar"]  # noqa: F405
     MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")  # noqa: F405
