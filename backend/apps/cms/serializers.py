@@ -7,6 +7,7 @@ from apps.cms.models import (
     Announcement,
     Banner,
     BlogPost,
+    BlogSection,
     Career,
     CMSTeacherHighlight,
     ContactMessage,
@@ -20,12 +21,32 @@ from apps.cms.models import (
     SiteSetting,
     Testimonial,
 )
+from apps.common.html import sanitize_rich_text
+from apps.common.seo import SEO_FIELD_KWARGS, apply_seo_fallbacks
 from apps.common.serializers_media import SafeMediaRepresentationMixin
 from apps.courses.models import Course
 
 
 class SiteSettingSerializer(SafeMediaRepresentationMixin, serializers.ModelSerializer):
-    safe_media_fields = ("logo", "favicon")
+    safe_media_fields = ("logo", "favicon", "og_image")
+
+    # Ensure latitude/longitude come back as JSON numbers.
+    # DRF's default DecimalField behavior is to coerce to string, which can
+    # break some map libraries expecting numeric inputs.
+    latitude = serializers.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        allow_null=True,
+        required=False,
+        coerce_to_string=False,
+    )
+    longitude = serializers.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        allow_null=True,
+        required=False,
+        coerce_to_string=False,
+    )
 
     class Meta:
         model = SiteSetting
@@ -38,6 +59,8 @@ class SiteSettingSerializer(SafeMediaRepresentationMixin, serializers.ModelSeria
             "contact_email",
             "contact_phone",
             "address",
+            "latitude",
+            "longitude",
             "social_links",
             "footer_text",
             "features_eyebrow",
@@ -45,11 +68,35 @@ class SiteSettingSerializer(SafeMediaRepresentationMixin, serializers.ModelSeria
             "homepage_features",
             "testimonials_eyebrow",
             "testimonials_heading",
+            "og_title",
+            "og_description",
+            "og_image",
+            "google_search_console_verification",
             "is_published",
             "created_at",
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+        extra_kwargs = {
+            "og_title": {"required": False, "allow_blank": True},
+            "og_description": {"required": False, "allow_blank": True},
+            "og_image": {"required": False, "allow_null": True},
+        }
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # Expose unset verification as null (not empty string).
+        raw = data.get("google_search_console_verification")
+        if raw is None or (isinstance(raw, str) and not raw.strip()):
+            data["google_search_console_verification"] = None
+        else:
+            data["google_search_console_verification"] = str(raw).strip()
+        return apply_seo_fallbacks(
+            data,
+            title=instance.site_name,
+            description=instance.tagline,
+            fallback_image_url=data.get("logo"),
+        )
 
 
 class BannerSerializer(SafeMediaRepresentationMixin, serializers.ModelSerializer):
@@ -97,10 +144,67 @@ class PageSerializer(SafeMediaRepresentationMixin, serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
+class BlogSectionSerializer(SafeMediaRepresentationMixin, serializers.ModelSerializer):
+    safe_media_fields = ("image",)
+
+    class Meta:
+        model = BlogSection
+        fields = [
+            "id",
+            "blog_post",
+            "title",
+            "description",
+            "image",
+            "order",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "blog_post", "created_at", "updated_at"]
+        extra_kwargs = {
+            "title": {"required": False, "allow_blank": True, "allow_null": True},
+            "order": {"required": False},
+            "image": {"required": False, "allow_null": True},
+        }
+
+    def validate_title(self, value):
+        if value is None:
+            return None
+        value = str(value).strip()
+        return value or None
+
+    def validate_description(self, value):
+        value = sanitize_rich_text((value or "").strip())
+        if not value:
+            raise serializers.ValidationError("This field may not be blank.")
+        return value
+
+    def validate(self, attrs):
+        post = (
+            attrs.get("blog_post")
+            or self.context.get("blog_post")
+            or getattr(self.instance, "blog_post", None)
+        )
+        nested = getattr(self, "parent", None) is not None
+        if post is None and not nested:
+            raise serializers.ValidationError({"blog_post": "Blog post is required."})
+        if post is not None and self.instance is None:
+            initial = self.initial_data if isinstance(self.initial_data, dict) else {}
+            if "order" not in initial:
+                last = (
+                    BlogSection.objects.filter(blog_post=post)
+                    .order_by("-order")
+                    .values_list("order", flat=True)
+                    .first()
+                )
+                attrs["order"] = 0 if last is None else last + 1
+        return attrs
+
+
 class BlogPostSerializer(SafeMediaRepresentationMixin, serializers.ModelSerializer):
-    safe_media_fields = ("cover_image",)
+    safe_media_fields = ("cover_image", "og_image")
     author_name = serializers.SerializerMethodField()
     slug = serializers.SlugField(required=False, allow_blank=True, max_length=270, validators=[])
+    sections = BlogSectionSerializer(many=True, required=False)
 
     class Meta:
         model = BlogPost
@@ -110,9 +214,15 @@ class BlogPostSerializer(SafeMediaRepresentationMixin, serializers.ModelSerializ
             "slug",
             "excerpt",
             "content",
+            "sections",
             "author",
             "author_name",
             "cover_image",
+            "meta_title",
+            "meta_description",
+            "og_title",
+            "og_description",
+            "og_image",
             "category",
             "tags",
             "is_published",
@@ -131,6 +241,9 @@ class BlogPostSerializer(SafeMediaRepresentationMixin, serializers.ModelSerializ
         ]
         extra_kwargs = {
             "slug": {"required": False, "allow_blank": True},
+            "content": {"required": False, "allow_blank": True},
+            "cover_image": {"required": False, "allow_null": True},
+            **SEO_FIELD_KWARGS,
         }
 
     def get_author_name(self, obj):
@@ -172,11 +285,67 @@ class BlogPostSerializer(SafeMediaRepresentationMixin, serializers.ModelSerializ
             attrs["slug"] = raw_slug
         return attrs
 
+    def _sync_sections(self, post, items):
+        previous = list(
+            BlogSection.objects.filter(blog_post=post).order_by("order", "created_at")
+        )
+        BlogSection.objects.filter(blog_post=post).delete()
+        for index, item in enumerate(items or []):
+            image = item.get("image")
+            if not image and index < len(previous) and previous[index].image:
+                image = previous[index].image
+            BlogSection.objects.create(
+                blog_post=post,
+                title=item.get("title") or None,
+                description=item["description"],
+                image=image,
+                order=item.get("order", index),
+            )
+        if items:
+            post.content = items[0]["description"]
+            post.save(update_fields=["content", "updated_at"])
+
+    def create(self, validated_data):
+        sections = validated_data.pop("sections", None)
+        post = super().create(validated_data)
+        if sections is not None:
+            self._sync_sections(post, sections)
+        elif (post.content or "").strip():
+            BlogSection.objects.create(
+                blog_post=post,
+                title=None,
+                description=post.content,
+                order=0,
+            )
+        return post
+
+    def update(self, instance, validated_data):
+        sections = validated_data.pop("sections", serializers.empty)
+        post = super().update(instance, validated_data)
+        if sections is not serializers.empty:
+            self._sync_sections(post, sections)
+        return post
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        sections = data.get("sections") or []
+        first_desc = ""
+        if sections:
+            first_desc = sections[0].get("description") or ""
+        fallback_desc = first_desc or instance.excerpt or instance.content
+        return apply_seo_fallbacks(
+            data,
+            title=instance.title,
+            description=fallback_desc,
+            fallback_image_url=data.get("cover_image"),
+        )
+
 
 class EventSerializer(SafeMediaRepresentationMixin, serializers.ModelSerializer):
-    safe_media_fields = ("cover_image",)
+    safe_media_fields = ("cover_image", "og_image")
     course_title = serializers.CharField(source="course.title", read_only=True)
     course_slug = serializers.CharField(source="course.slug", read_only=True)
+    slug = serializers.SlugField(required=False, allow_blank=True, max_length=270, validators=[])
 
     class Meta:
         model = Event
@@ -192,6 +361,11 @@ class EventSerializer(SafeMediaRepresentationMixin, serializers.ModelSerializer)
             "start_datetime",
             "end_datetime",
             "cover_image",
+            "meta_title",
+            "meta_description",
+            "og_title",
+            "og_description",
+            "og_image",
             "is_published",
             "registration_url",
             "order",
@@ -201,7 +375,51 @@ class EventSerializer(SafeMediaRepresentationMixin, serializers.ModelSerializer)
         read_only_fields = ["id", "created_at", "updated_at"]
         extra_kwargs = {
             "course": {"queryset": Course.objects.all(), "required": False, "allow_null": True},
+            "slug": {"required": False, "allow_blank": True},
+            "cover_image": {"required": False, "allow_null": True},
+            **SEO_FIELD_KWARGS,
         }
+
+    def _slug_taken(self, slug: str, *, exclude_pk=None) -> bool:
+        qs = Event.all_objects.filter(slug=slug)
+        if exclude_pk:
+            qs = qs.exclude(pk=exclude_pk)
+        return qs.exists()
+
+    def _unique_slug(self, base: str, *, exclude_pk=None) -> str:
+        slug_base = slugify(base) or "event"
+        slug = slug_base
+        counter = 1
+        while self._slug_taken(slug, exclude_pk=exclude_pk):
+            slug = f"{slug_base}-{counter}"
+            counter += 1
+        return slug
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        exclude_pk = self.instance.pk if self.instance else None
+        if self.instance is not None and "slug" not in attrs:
+            return attrs
+        raw_slug = (attrs.get("slug") or "").strip()
+        title = attrs.get("title") or (
+            self.instance.title if self.instance is not None else "event"
+        )
+        if not raw_slug:
+            attrs["slug"] = self._unique_slug(title, exclude_pk=exclude_pk)
+        elif self._slug_taken(raw_slug, exclude_pk=exclude_pk):
+            attrs["slug"] = self._unique_slug(raw_slug, exclude_pk=exclude_pk)
+        else:
+            attrs["slug"] = raw_slug
+        return attrs
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        return apply_seo_fallbacks(
+            data,
+            title=instance.title,
+            description=instance.description,
+            fallback_image_url=data.get("cover_image"),
+        )
 
 
 class GalleryItemSerializer(SafeMediaRepresentationMixin, serializers.ModelSerializer):
@@ -399,6 +617,14 @@ class AnnouncementSerializer(serializers.ModelSerializer):
 
 
 class ContactMessageSerializer(serializers.ModelSerializer):
+    # Client-only; verified server-side then discarded (never stored).
+    recaptcha_token = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+
     class Meta:
         model = ContactMessage
         fields = [
@@ -413,6 +639,7 @@ class ContactMessageSerializer(serializers.ModelSerializer):
             "replied_at",
             "created_at",
             "updated_at",
+            "recaptcha_token",
         ]
         read_only_fields = [
             "id",
@@ -423,10 +650,25 @@ class ContactMessageSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    def validate(self, attrs):
+        from apps.common.recaptcha import require_recaptcha
+
+        # Public creates only — admin updates must not require a widget token.
+        if self.instance is None:
+            require_recaptcha(attrs, self.context.get("request"))
+        else:
+            attrs.pop("recaptcha_token", None)
+        return attrs
+
 
 class ContactMessageAdminSerializer(ContactMessageSerializer):
     class Meta(ContactMessageSerializer.Meta):
         read_only_fields = ["id", "created_at", "updated_at"]
+
+    def validate(self, attrs):
+        # Staff/admin writes never go through the public reCAPTCHA widget.
+        attrs.pop("recaptcha_token", None)
+        return attrs
 
     def update(self, instance, validated_data):
         status = validated_data.pop("status", None)
@@ -441,6 +683,12 @@ class EventRegistrationSerializer(serializers.ModelSerializer):
     """Public create payload."""
 
     event_slug = serializers.SlugField(write_only=True)
+    recaptcha_token = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
 
     class Meta:
         model = EventRegistration
@@ -453,8 +701,15 @@ class EventRegistrationSerializer(serializers.ModelSerializer):
             "message",
             "status",
             "created_at",
+            "recaptcha_token",
         ]
         read_only_fields = ["id", "status", "created_at"]
+
+    def validate(self, attrs):
+        from apps.common.recaptcha import require_recaptcha
+
+        require_recaptcha(attrs, self.context.get("request"))
+        return attrs
 
     def create(self, validated_data):
         slug = validated_data.pop("event_slug")

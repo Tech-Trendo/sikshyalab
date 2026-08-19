@@ -15,6 +15,7 @@ from apps.cms.views import (
     GalleryItemViewSet,
     PageViewSet,
     PartnerViewSet,
+    PublicConfigAPIView,
     SiteSettingViewSet,
     TestimonialViewSet,
 )
@@ -47,5 +48,6 @@ router.register(
 )
 
 urlpatterns = [
+    path("public-config/", PublicConfigAPIView.as_view(), name="public-config"),
     path("", include(router.urls)),
 ]

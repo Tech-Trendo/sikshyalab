@@ -3,6 +3,7 @@ Website CMS models for ShikshaLab public site content.
 """
 
 from django.conf import settings
+from django.core.cache import cache
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
@@ -10,6 +11,10 @@ from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
 from apps.common.models import BaseModel
+
+_SITE_SETTING_CACHE_KEY = "cms:site_setting:solo:v1"
+_SITE_SETTING_CACHE_TTL = int(getattr(settings, "SITE_SETTING_CACHE_TTL", 60))
+_SITE_SETTING_NONE = 0
 
 
 class SiteSetting(BaseModel):
@@ -22,6 +27,22 @@ class SiteSetting(BaseModel):
     contact_email = models.EmailField(blank=True)
     contact_phone = models.CharField(max_length=30, blank=True)
     address = models.TextField(blank=True)
+    latitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(-90), MaxValueValidator(90)],
+        help_text=_("Map latitude for the Contact page (−90 to 90). Null = hide map."),
+    )
+    longitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(-180), MaxValueValidator(180)],
+        help_text=_("Map longitude for the Contact page (−180 to 180). Null = hide map."),
+    )
     social_links = models.JSONField(default=dict, blank=True)
     footer_text = models.TextField(blank=True)
     features_eyebrow = models.CharField(max_length=100, blank=True, default="")
@@ -43,6 +64,33 @@ class SiteSetting(BaseModel):
         blank=True,
         default="",
     )
+    og_title = models.CharField(
+        max_length=70,
+        blank=True,
+        default="",
+        help_text=_("Open Graph title. Recommended: 60 characters max. Leave blank to use the site name."),
+    )
+    og_description = models.CharField(
+        max_length=160,
+        blank=True,
+        default="",
+        help_text=_("Open Graph description. Recommended: 160 characters max. Leave blank to use the tagline."),
+    )
+    og_image = models.ImageField(
+        upload_to="cms/site/og/",
+        null=True,
+        blank=True,
+        help_text=_("Open Graph image. Recommended size: 1200×630px. Leave blank to use the site logo."),
+    )
+    google_search_console_verification = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text=_(
+            "Google Search Console meta verification token only "
+            "(e.g. AUeQdOo…), without the google-site-verification= prefix."
+        ),
+    )
     is_published = models.BooleanField(default=True, db_index=True)
 
     class Meta:
@@ -55,10 +103,31 @@ class SiteSetting(BaseModel):
 
     @classmethod
     def get_solo(cls):
+        cached_pk = cache.get(_SITE_SETTING_CACHE_KEY)
+        if cached_pk is not None:
+            if cached_pk == _SITE_SETTING_NONE:
+                return None
+            obj = cls.objects.filter(pk=cached_pk).first()
+            if obj is not None:
+                return obj
+
         obj = cls.objects.filter(is_published=True).order_by("-created_at").first()
         if obj is None:
             obj = cls.objects.order_by("-created_at").first()
+        cache.set(
+            _SITE_SETTING_CACHE_KEY,
+            obj.pk if obj is not None else _SITE_SETTING_NONE,
+            _SITE_SETTING_CACHE_TTL,
+        )
         return obj
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        cache.delete(_SITE_SETTING_CACHE_KEY)
+
+    def delete(self, *args, **kwargs):
+        super().delete(*args, **kwargs)
+        cache.delete(_SITE_SETTING_CACHE_KEY)
 
 
 class Banner(BaseModel):
@@ -160,7 +229,7 @@ class BlogPost(BaseModel):
     title = models.CharField(max_length=255)
     slug = models.SlugField(max_length=270, unique=True)
     excerpt = models.TextField(blank=True)
-    content = models.TextField()
+    content = models.TextField(blank=True)
     author = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -172,6 +241,26 @@ class BlogPost(BaseModel):
         upload_to="cms/blog/",
         null=True,
         blank=True,
+    )
+    meta_title = models.CharField(max_length=70, blank=True)
+    meta_description = models.CharField(max_length=320, blank=True)
+    og_title = models.CharField(
+        max_length=70,
+        blank=True,
+        default="",
+        help_text=_("Open Graph title. Recommended: 60 characters max. Leave blank to use the post title."),
+    )
+    og_description = models.CharField(
+        max_length=160,
+        blank=True,
+        default="",
+        help_text=_("Open Graph description. Recommended: 160 characters max. Leave blank to use the excerpt."),
+    )
+    og_image = models.ImageField(
+        upload_to="cms/blog/og/",
+        null=True,
+        blank=True,
+        help_text=_("Open Graph image. Recommended size: 1200×630px. Leave blank to use the cover image."),
     )
     category = models.CharField(max_length=100, blank=True, db_index=True)
     tags = models.JSONField(default=list, blank=True)
@@ -206,6 +295,36 @@ class BlogPost(BaseModel):
         super().save(*args, **kwargs)
 
 
+class BlogSection(BaseModel):
+    """Ordered content block for a blog post (title optional)."""
+
+    blog_post = models.ForeignKey(
+        BlogPost,
+        on_delete=models.CASCADE,
+        related_name="sections",
+    )
+    title = models.CharField(max_length=255, blank=True, null=True)
+    description = models.TextField()
+    image = models.ImageField(
+        upload_to="cms/blog/sections/",
+        null=True,
+        blank=True,
+    )
+    order = models.PositiveIntegerField(default=0, db_index=True)
+
+    class Meta:
+        ordering = ["order", "created_at"]
+        verbose_name = _("blog section")
+        verbose_name_plural = _("blog sections")
+        indexes = [
+            models.Index(fields=["blog_post", "order"], name="cms_blogsec_post_order_idx"),
+        ]
+
+    def __str__(self):
+        label = (self.title or "").strip() or (self.description or "")[:40]
+        return f"{self.blog_post_id} — {label}"
+
+
 class Event(BaseModel):
     title = models.CharField(max_length=255)
     slug = models.SlugField(max_length=270, unique=True)
@@ -224,6 +343,26 @@ class Event(BaseModel):
         upload_to="cms/events/",
         null=True,
         blank=True,
+    )
+    meta_title = models.CharField(max_length=70, blank=True)
+    meta_description = models.CharField(max_length=320, blank=True)
+    og_title = models.CharField(
+        max_length=70,
+        blank=True,
+        default="",
+        help_text=_("Open Graph title. Recommended: 60 characters max. Leave blank to use the event title."),
+    )
+    og_description = models.CharField(
+        max_length=160,
+        blank=True,
+        default="",
+        help_text=_("Open Graph description. Recommended: 160 characters max. Leave blank to use the event description."),
+    )
+    og_image = models.ImageField(
+        upload_to="cms/events/og/",
+        null=True,
+        blank=True,
+        help_text=_("Open Graph image. Recommended size: 1200×630px. Leave blank to use the cover image."),
     )
     is_published = models.BooleanField(default=False, db_index=True)
     registration_url = models.URLField(blank=True)
