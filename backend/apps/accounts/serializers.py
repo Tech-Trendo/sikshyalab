@@ -442,7 +442,11 @@ class LoginSerializer(serializers.Serializer):
         email = attrs.get("email", "").lower().strip()
         password = attrs.get("password")
 
-        user = User.objects.filter(email__iexact=email).first()
+        user = (
+            User.objects.select_related("student_profile")
+            .filter(email__iexact=email)
+            .first()
+        )
         if user is None or not user.check_password(password):
             raise serializers.ValidationError("Invalid email or password.")
 
