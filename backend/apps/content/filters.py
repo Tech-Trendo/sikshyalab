@@ -4,17 +4,22 @@ Django filters for the content CMS API.
 
 import django_filters
 
+from apps.cms.models import BlogSection
 from apps.content.models import (
     Chapter,
     ChapterProgress,
+    ClassSchedule,
+    CourseFAQ,
     CourseProgress,
     Part,
     PartAttachment,
     PartResource,
+    Topic,
     VideoPart,
     VideoTimestamp,
     StudentProgress,
 )
+from apps.courses.models import CourseHighlight
 
 
 class ChapterFilter(django_filters.FilterSet):
@@ -37,6 +42,50 @@ class PartFilter(django_filters.FilterSet):
     class Meta:
         model = Part
         fields = ["chapter", "course", "content_type", "is_published", "is_preview", "slug"]
+
+
+class TopicFilter(django_filters.FilterSet):
+    part = django_filters.NumberFilter(field_name="part_id")
+    chapter = django_filters.NumberFilter(field_name="part__chapter_id")
+    course = django_filters.UUIDFilter(field_name="part__chapter__course_id")
+
+    class Meta:
+        model = Topic
+        fields = ["part", "chapter", "course"]
+
+
+class ClassScheduleFilter(django_filters.FilterSet):
+    course = django_filters.UUIDFilter(field_name="course_id")
+    date = django_filters.DateFilter()
+    is_published = django_filters.BooleanFilter()
+
+    class Meta:
+        model = ClassSchedule
+        fields = ["course", "date", "is_published"]
+
+
+class CourseFAQFilter(django_filters.FilterSet):
+    course = django_filters.UUIDFilter(field_name="course_id")
+
+    class Meta:
+        model = CourseFAQ
+        fields = ["course"]
+
+
+class CourseHighlightFilter(django_filters.FilterSet):
+    course = django_filters.UUIDFilter(field_name="course_id")
+
+    class Meta:
+        model = CourseHighlight
+        fields = ["course"]
+
+
+class BlogSectionFilter(django_filters.FilterSet):
+    blog_post = django_filters.UUIDFilter(field_name="blog_post_id")
+
+    class Meta:
+        model = BlogSection
+        fields = ["blog_post"]
 
 
 class PartResourceFilter(django_filters.FilterSet):
