@@ -133,6 +133,26 @@ class Course(BaseModel):
         null=True,
         blank=True,
     )
+    meta_title = models.CharField(max_length=70, blank=True)
+    meta_description = models.CharField(max_length=320, blank=True)
+    og_title = models.CharField(
+        max_length=70,
+        blank=True,
+        default="",
+        help_text=_("Open Graph title. Recommended: 60 characters max. Leave blank to use the course title."),
+    )
+    og_description = models.CharField(
+        max_length=160,
+        blank=True,
+        default="",
+        help_text=_("Open Graph description. Recommended: 160 characters max. Leave blank to use the short description."),
+    )
+    og_image = models.ImageField(
+        upload_to="courses/og/",
+        null=True,
+        blank=True,
+        help_text=_("Open Graph image. Recommended size: 1200×630px. Leave blank to use the thumbnail."),
+    )
     is_published = models.BooleanField(default=False, db_index=True)
     is_featured = models.BooleanField(default=False, db_index=True)
     status = models.CharField(
@@ -148,6 +168,12 @@ class Course(BaseModel):
         help_text=_("List of learning outcome strings."),
     )
     language = models.CharField(max_length=50, blank=True, default="English")
+    why_this_course_title = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=_('Dynamic "Why this course?" section heading, e.g. "Why MERN Stack?".'),
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -215,22 +241,25 @@ class CourseInstructor(BaseModel):
         return f"{self.teacher} → {self.course} ({role})"
 
 
-class CourseFAQ(BaseModel):
-    """Frequently asked question for a course."""
+class CourseHighlight(BaseModel):
+    """Checklist point for the public "Why this course?" section."""
 
     course = models.ForeignKey(
         Course,
         on_delete=models.CASCADE,
-        related_name="faqs",
+        related_name="highlights",
     )
-    question = models.CharField(max_length=500)
-    answer = models.TextField()
-    order = models.PositiveIntegerField(default=0)
+    heading = models.CharField(max_length=255)
+    description = models.TextField()
+    order = models.PositiveIntegerField(default=0, db_index=True)
 
     class Meta:
         ordering = ["order", "created_at"]
-        verbose_name = _("course FAQ")
-        verbose_name_plural = _("course FAQs")
+        verbose_name = _("course highlight")
+        verbose_name_plural = _("course highlights")
+        indexes = [
+            models.Index(fields=["course", "order"], name="courses_cou_course__order_idx"),
+        ]
 
     def __str__(self):
-        return self.question[:80]
+        return self.heading[:80]
