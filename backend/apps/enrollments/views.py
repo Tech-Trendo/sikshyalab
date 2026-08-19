@@ -61,10 +61,16 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             "batch",
             "shift",
             "approved_by",
-        ).prefetch_related(
-            "documents",
-            Prefetch("history", queryset=EnrollmentHistory.objects.select_related("changed_by")),
         )
+        # List serializer does not include documents/history — skip heavy prefetches.
+        if self.action != "list":
+            qs = qs.prefetch_related(
+                "documents",
+                Prefetch(
+                    "history",
+                    queryset=EnrollmentHistory.objects.select_related("changed_by"),
+                ),
+            )
         user = self.request.user
         if user_has_role(user, ROLE_ADMIN, ROLE_STAFF):
             return qs
