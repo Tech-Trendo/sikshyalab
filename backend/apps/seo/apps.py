@@ -6,3 +6,6 @@ class SeoConfig(AppConfig):
     name = "apps.seo"
     label = "seo"
     verbose_name = "SEO"
+
+    def ready(self):
+        from apps.seo import signals  # noqa: F401
