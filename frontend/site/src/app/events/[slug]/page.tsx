@@ -9,6 +9,7 @@ import { EventRegistrationForm } from "@/components/events/EventRegistrationForm
 import { MediaImage } from "@/components/media/MediaImage";
 import { fetchPublicEvent } from "@/lib/public-api";
 import { resolveMediaUrl } from "@/lib/env";
+import { isEventOver } from "@/lib/event-time";
 
 export default function EventDetailPage({
   params,
@@ -58,6 +59,7 @@ export default function EventDetailPage({
     resolveMediaUrl(event.cover_image) ||
     (typeof event.cover_image === "string" ? event.cover_image.trim() : "") ||
     null;
+  const registrationClosed = isEventOver(event.start_datetime, event.end_datetime);
 
   return (
     <SiteLayout flushTop>
@@ -114,18 +116,29 @@ export default function EventDetailPage({
           <div className="lg:col-span-2">
             <div className="card-brand sticky top-28 bg-white p-6 sm:p-8">
               <h2 className="font-heading text-xl font-bold text-brand-navy-dark">
-                Register for this event
+                {registrationClosed ? "Registration closed" : "Register for this event"}
               </h2>
               <p className="mt-2 text-sm text-brand-body">
-                Fill out the form. After admin approval, event details will be
-                sent to your email.
+                {registrationClosed
+                  ? "This event has already ended, so new registrations are disabled."
+                  : "Fill out the form. After admin approval, event details will be sent to your email."}
               </p>
               <div className="mt-6">
-                <EventRegistrationForm
-                  eventSlug={event.slug}
-                  eventTitle={event.title}
-                  idPrefix="detail-event-reg"
-                />
+                {registrationClosed ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="sl-hero-btn sl-hero-btn--yellow w-full !h-12 !min-h-12 opacity-50"
+                  >
+                    Event ended
+                  </button>
+                ) : (
+                  <EventRegistrationForm
+                    eventSlug={event.slug}
+                    eventTitle={event.title}
+                    idPrefix="detail-event-reg"
+                  />
+                )}
               </div>
             </div>
           </div>

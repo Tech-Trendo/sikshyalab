@@ -13,6 +13,7 @@ import RevealOnScroll, {
 import { EventCard } from "@/components/events/EventCard";
 import { EventRegisterDialog } from "@/components/events/EventRegisterDialog";
 import { usePublicData } from "@/hooks/usePublicData";
+import { isEventOver } from "@/lib/event-time";
 
 /** Home events — newest 3 from the API. */
 export function HomeEvents() {
@@ -32,9 +33,9 @@ export function HomeEvents() {
           className="sl-section-head"
         />
 
-        <RevealStagger className="grid justify-items-stretch gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
+        <RevealStagger className="grid auto-rows-fr justify-items-stretch gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
           {list.map((e) => (
-            <motion.div key={e.slug} variants={staggerItem} className="w-full">
+            <motion.div key={e.slug} variants={staggerItem} className="flex h-full w-full">
               <EventCard
                 slug={e.slug}
                 title={e.title}
@@ -43,7 +44,11 @@ export function HomeEvents() {
                 time={e.time}
                 location={e.location}
                 cover={e.cover}
-                onRegister={() => setRegisterFor({ slug: e.slug, title: e.title })}
+                registrationClosed={isEventOver(e.startsAt, e.endsAt)}
+                onRegister={() => {
+                  if (isEventOver(e.startsAt, e.endsAt)) return;
+                  setRegisterFor({ slug: e.slug, title: e.title });
+                }}
                 className="mx-0 max-w-none"
               />
             </motion.div>

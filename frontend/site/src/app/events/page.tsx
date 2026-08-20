@@ -7,6 +7,7 @@ import { EventRegisterDialog } from "@/components/events/EventRegisterDialog";
 import { ListPagination } from "@/components/ui/ListPagination";
 import { usePublicData } from "@/hooks/usePublicData";
 import { useClientPagination } from "@/hooks/useClientPagination";
+import { isEventOver } from "@/lib/event-time";
 
 const PAGE_SIZE = 9;
 const FALLBACK_COVER = "/images/theme/programming-banner.webp";
@@ -40,7 +41,7 @@ export default function EventsPage() {
             <p className="py-20 text-center text-brand-body">No upcoming events yet.</p>
           ) : (
             <>
-              <div className="grid justify-items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5">
+              <div className="grid auto-rows-fr justify-items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5">
                 {pageItems.map((e) => {
                   const slug =
                     "slug" in e && e.slug
@@ -60,7 +61,21 @@ export default function EventsPage() {
                       time={e.time}
                       location={e.location}
                       cover={cover}
-                      onRegister={() => setRegisterFor({ slug, title: e.title })}
+                      registrationClosed={isEventOver(
+                        "startsAt" in e ? String(e.startsAt || "") : undefined,
+                        "endsAt" in e ? (e.endsAt as string | null) : undefined,
+                      )}
+                      onRegister={() => {
+                        if (
+                          isEventOver(
+                            "startsAt" in e ? String(e.startsAt || "") : undefined,
+                            "endsAt" in e ? (e.endsAt as string | null) : undefined,
+                          )
+                        ) {
+                          return;
+                        }
+                        setRegisterFor({ slug, title: e.title });
+                      }}
                       className="mx-0 max-w-none"
                     />
                   );

@@ -17,6 +17,8 @@ export type EventCardProps = {
   cover: string;
   onRegister?: () => void;
   className?: string;
+  /** When true, Register now is disabled (event date has passed). */
+  registrationClosed?: boolean;
 };
 
 /**
@@ -32,6 +34,7 @@ export function EventCard({
   cover,
   onRegister,
   className,
+  registrationClosed,
 }: EventCardProps) {
   const detailHref = `/events/${slug}`;
   const Cover = isDjangoMediaSrc(cover) ? MediaImage : Image;
@@ -39,7 +42,7 @@ export function EventCard({
   return (
     <article
       className={cn(
-        "group relative mx-auto flex w-full max-w-md flex-col overflow-hidden rounded-[10px] bg-white lg:max-w-none",
+        "group relative mx-auto flex h-full w-full max-w-md flex-col overflow-hidden rounded-[10px] bg-white lg:max-w-none",
         "border border-brand-border/80 shadow-brand-soft",
         "transition-transform duration-[400ms] ease-[cubic-bezier(0.215,0.61,0.355,1)]",
         "hover:-translate-y-1.5 hover:shadow-brand-med",
@@ -60,49 +63,58 @@ export function EventCard({
         </span>
       </div>
 
-      <div className="flex flex-1 flex-col p-4 sm:p-5">
-        <h3 className="line-clamp-2 font-secondary text-base font-bold leading-snug text-brand-navy-dark transition-colors duration-brand group-hover:text-brand-orange sm:text-lg">
-          {title}
-        </h3>
+      <div className="flex min-h-0 flex-1 flex-col p-4 sm:p-5">
+        <div className="min-h-0 flex-1">
+          <h3 className="line-clamp-2 font-secondary text-base font-bold leading-snug text-brand-navy-dark transition-colors duration-brand group-hover:text-brand-orange sm:text-lg">
+            {title}
+          </h3>
 
-        {description ? (
-          <p className="mt-2.5 line-clamp-3 text-sm leading-relaxed text-brand-body">
-            {description}
-          </p>
-        ) : null}
-
-        <div className="mt-4 border-t border-brand-navy/10 pt-4">
-          <div className="flex flex-col gap-2 text-sm text-brand-body">
-            <span className="inline-flex items-center gap-1.5">
-              <Clock className="h-4 w-4 shrink-0 text-brand-navy" aria-hidden />
-              {time}
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <MapPin className="h-4 w-4 shrink-0 text-brand-navy" aria-hidden />
-              <span className="line-clamp-1">{location}</span>
-            </span>
-          </div>
+          {description ? (
+            <p className="mt-2.5 line-clamp-3 text-sm leading-relaxed text-brand-body">
+              {description}
+            </p>
+          ) : null}
         </div>
 
-        <div className="sl-card-cta-pair mt-4">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onRegister?.();
-            }}
-            className="sl-card-cta sl-card-cta--primary sl-event-card-cta"
-          >
-            Register now
-          </button>
-          <Link
-            href={detailHref}
-            onClick={(e) => e.stopPropagation()}
-            className="sl-card-cta sl-card-cta--secondary"
-          >
-            Learn more
-          </Link>
+        <div className="mt-auto shrink-0 pt-4">
+          <div className="border-t border-brand-navy/10 pt-4">
+            <div className="flex flex-col gap-2 text-sm text-brand-body">
+              <span className="inline-flex items-center gap-1.5">
+                <Clock className="h-4 w-4 shrink-0 text-brand-navy" aria-hidden />
+                {time}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <MapPin className="h-4 w-4 shrink-0 text-brand-navy" aria-hidden />
+                <span className="line-clamp-1">{location}</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="sl-card-cta-pair mt-4">
+            <button
+              type="button"
+              disabled={registrationClosed}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (registrationClosed) return;
+                onRegister?.();
+              }}
+              className={cn(
+                "sl-card-cta sl-card-cta--primary sl-event-card-cta",
+                registrationClosed && "pointer-events-none opacity-50",
+              )}
+            >
+              {registrationClosed ? "Event ended" : "Register now"}
+            </button>
+            <Link
+              href={detailHref}
+              onClick={(e) => e.stopPropagation()}
+              className="sl-card-cta sl-card-cta--secondary"
+            >
+              Learn more
+            </Link>
+          </div>
         </div>
       </div>
     </article>
