@@ -93,3 +93,4 @@ def pending_enrollment(db, student_user, course):
         final_amount=Decimal("8000.00"),
         enrollment_number=generate_enrollment_number(),
     )
+    

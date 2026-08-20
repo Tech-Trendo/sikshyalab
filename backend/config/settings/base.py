@@ -66,7 +66,7 @@ LOCAL_APPS = [
     "apps.assignments",
     "apps.certificates",
     "apps.cms",
-    "apps.seo",
+    "apps.seo.apps.SeoConfig",
     "apps.notifications.apps.NotificationsConfig",
     "apps.analytics.apps.AnalyticsConfig",
     "apps.tasks.apps.TasksConfig",
@@ -553,6 +553,7 @@ LOGGING = {
 SITE_URL = config("SITE_URL", default="http://localhost:8000")
 FRONTEND_URL = config("FRONTEND_URL", default="http://localhost:8081")
 PUBLIC_SITE_URL = config("PUBLIC_SITE_URL", default="http://localhost:3000")
+SITEMAP_MAX_URLS = config("SITEMAP_MAX_URLS", default=50000, cast=int)
 SUPERADMIN_EMAIL = config("SUPERADMIN_EMAIL", default="admin@shikshalab.io")
 SUPERADMIN_PASSWORD = config("SUPERADMIN_PASSWORD", default="Admin@12345")
 DASHBOARD_URL = config("DASHBOARD_URL", default="http://localhost:5173")
@@ -560,6 +561,12 @@ CERTIFICATE_VERIFY_BASE_URL = config(
     "CERTIFICATE_VERIFY_BASE_URL",
     default="",
 )
+
+# Google reCAPTCHA (public site key + server secret). Leave empty to disable checks.
+RECAPTCHA_SITE_KEY = config("RECAPTCHA_SITE_KEY", default="")
+RECAPTCHA_SECRET_KEY = config("RECAPTCHA_SECRET_KEY", default="")
+# For reCAPTCHA v3 only; 0 disables score gating (correct for v2 checkbox).
+RECAPTCHA_MIN_SCORE = config("RECAPTCHA_MIN_SCORE", default=0.0, cast=float)
 
 # Partner sync (external API → local PostgreSQL Partner table)
 # Public site always reads /cms/partners/ from the local DB.

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.courses.models import Course, CourseCategory, CourseFAQ, CourseInstructor
+from apps.courses.models import Course, CourseCategory, CourseHighlight, CourseInstructor
 
 
 class CourseInstructorInline(admin.TabularInline):
@@ -10,10 +10,11 @@ class CourseInstructorInline(admin.TabularInline):
     readonly_fields = ("assigned_at",)
 
 
-class CourseFAQInline(admin.StackedInline):
-    model = CourseFAQ
+class CourseHighlightInline(admin.StackedInline):
+    model = CourseHighlight
     extra = 0
-    fields = ("question", "answer", "order")
+    fields = ("heading", "description", "order")
+    ordering = ("order", "created_at")
 
 
 @admin.register(CourseCategory)
@@ -52,7 +53,7 @@ class CourseAdmin(admin.ModelAdmin):
     raw_id_fields = ("created_by",)
     filter_horizontal = ("categories",)
     readonly_fields = ("id", "created_at", "updated_at", "deleted_at")
-    inlines = [CourseInstructorInline, CourseFAQInline]
+    inlines = [CourseInstructorInline, CourseHighlightInline]
     fieldsets = (
         (
             None,
@@ -97,6 +98,26 @@ class CourseAdmin(admin.ModelAdmin):
             {"fields": ("thumbnail", "banner")},
         ),
         (
+            "SEO / Open Graph",
+            {
+                "fields": (
+                    "meta_title",
+                    "meta_description",
+                    "og_title",
+                    "og_description",
+                    "og_image",
+                ),
+                "description": (
+                    "OG title recommended 60 characters. OG description recommended 160. "
+                    "OG image recommended 1200×630px. Blank OG fields fall back to title, short description, and thumbnail."
+                ),
+            },
+        ),
+        (
+            "Why this course",
+            {"fields": ("why_this_course_title",)},
+        ),
+        (
             "Outcomes",
             {"fields": ("prerequisites", "learning_outcomes")},
         ),
@@ -128,9 +149,10 @@ class CourseInstructorAdmin(admin.ModelAdmin):
     readonly_fields = ("assigned_at",)
 
 
-@admin.register(CourseFAQ)
-class CourseFAQAdmin(admin.ModelAdmin):
-    list_display = ("question", "course", "order", "created_at")
-    search_fields = ("question", "answer", "course__title")
+
+@admin.register(CourseHighlight)
+class CourseHighlightAdmin(admin.ModelAdmin):
+    list_display = ("heading", "course", "order", "created_at")
+    search_fields = ("heading", "description", "course__title")
     raw_id_fields = ("course",)
     ordering = ("course", "order")

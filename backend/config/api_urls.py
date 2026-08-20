@@ -30,6 +30,7 @@ urlpatterns = [
     path("certificates/", include("apps.certificates.urls")),
     path("cms/", include("apps.cms.urls")),
     path("seo/", include("apps.seo.urls")),
+    path("sitemap/", include("apps.seo.sitemap_urls")),
     path("notifications/", include("apps.notifications.urls")),
     path("analytics/", include("apps.analytics.urls")),
     path("tasks/", include("apps.tasks.urls")),

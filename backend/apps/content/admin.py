@@ -3,10 +3,13 @@ from django.contrib import admin
 from apps.content.models import (
     Chapter,
     ChapterProgress,
+    ClassSchedule,
+    CourseFAQ,
     CourseProgress,
     Part,
     PartAttachment,
     PartResource,
+    Topic,
     VideoPart,
     VideoTimestamp,
     StudentProgress,
@@ -50,6 +53,13 @@ class PartAttachmentInline(admin.TabularInline):
     readonly_fields = ("file_size", "file_type")
 
 
+class TopicInline(admin.TabularInline):
+    model = Topic
+    extra = 0
+    fields = ("title", "order")
+    ordering = ("order", "id")
+
+
 class VideoPartInline(admin.TabularInline):
     model = VideoPart
     extra = 0
@@ -89,7 +99,7 @@ class PartAdmin(admin.ModelAdmin):
     search_fields = ("title", "slug", "description")
     prepopulated_fields = {"slug": ("title",)}
     raw_id_fields = ("chapter",)
-    inlines = [PartResourceInline, PartAttachmentInline, VideoPartInline]
+    inlines = [TopicInline, PartResourceInline, PartAttachmentInline, VideoPartInline]
 
 
 class VideoTimestampInline(admin.TabularInline):
@@ -131,6 +141,32 @@ class PartAttachmentAdmin(admin.ModelAdmin):
     search_fields = ("title",)
     raw_id_fields = ("part",)
     readonly_fields = ("file_size", "file_type")
+
+
+@admin.register(Topic)
+class TopicAdmin(admin.ModelAdmin):
+    list_display = ("title", "part", "order", "created_at", "updated_at")
+    search_fields = ("title", "part__title")
+    raw_id_fields = ("part",)
+    ordering = ("part", "order", "id")
+
+
+@admin.register(ClassSchedule)
+class ClassScheduleAdmin(admin.ModelAdmin):
+    list_display = ("course", "date", "start_time", "end_time", "is_published", "updated_at")
+    list_filter = ("is_published", "date")
+    search_fields = ("course__title", "course__slug")
+    raw_id_fields = ("course",)
+    ordering = ("date", "start_time")
+    list_editable = ("is_published",)
+
+
+@admin.register(CourseFAQ)
+class CourseFAQAdmin(admin.ModelAdmin):
+    list_display = ("question", "course", "order", "created_at")
+    search_fields = ("question", "answer", "course__title")
+    raw_id_fields = ("course",)
+    ordering = ("course", "order", "created_at")
 
 
 @admin.register(VideoPart)

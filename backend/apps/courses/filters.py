@@ -4,7 +4,7 @@ django-filter FilterSets for the courses app.
 
 import django_filters
 
-from apps.courses.models import Course, CourseCategory, CourseFAQ, CourseInstructor
+from apps.courses.models import Course, CourseCategory, CourseInstructor
 
 
 class CourseCategoryFilter(django_filters.FilterSet):
@@ -45,10 +45,3 @@ class CourseInstructorFilter(django_filters.FilterSet):
             "is_primary": ["exact"],
         }
 
-
-class CourseFAQFilter(django_filters.FilterSet):
-    class Meta:
-        model = CourseFAQ
-        fields = {
-            "course": ["exact"],
-        }

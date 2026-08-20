@@ -4,6 +4,7 @@ from apps.cms.models import (
     Announcement,
     Banner,
     BlogPost,
+    BlogSection,
     Career,
     CMSTeacherHighlight,
     ContactMessage,
@@ -21,8 +22,60 @@ from apps.cms.models import (
 
 @admin.register(SiteSetting)
 class SiteSettingAdmin(admin.ModelAdmin):
-    list_display = ("site_name", "contact_email", "contact_phone", "is_published")
-    search_fields = ("site_name", "contact_email", "tagline")
+    list_display = (
+        "site_name",
+        "contact_email",
+        "contact_phone",
+        "latitude",
+        "longitude",
+        "is_published",
+    )
+    search_fields = ("site_name", "contact_email", "tagline", "address")
+    fieldsets = (
+        (None, {"fields": ("site_name", "tagline", "logo", "favicon", "is_published")}),
+        (
+            "Contact",
+            {
+                "fields": (
+                    "contact_email",
+                    "contact_phone",
+                    "address",
+                    "latitude",
+                    "longitude",
+                ),
+                "description": "Latitude/longitude power the Contact page map. Leave blank to hide the map.",
+            },
+        ),
+        ("Social & footer", {"fields": ("social_links", "footer_text")}),
+        (
+            "SEO / Open Graph",
+            {
+                "fields": (
+                    "google_search_console_verification",
+                    "og_title",
+                    "og_description",
+                    "og_image",
+                ),
+                "description": (
+                    "Paste only the verification token from Google "
+                    "(e.g. AUeQdOo…), not the full google-site-verification=… string. "
+                    "OG fields power social previews; leave blank to use the site name, tagline, and logo."
+                ),
+            },
+        ),
+        (
+            "Homepage sections",
+            {
+                "fields": (
+                    "features_eyebrow",
+                    "features_heading",
+                    "homepage_features",
+                    "testimonials_eyebrow",
+                    "testimonials_heading",
+                ),
+            },
+        ),
+    )
 
 
 @admin.register(Banner)
@@ -49,6 +102,13 @@ class PageAdmin(admin.ModelAdmin):
     prepopulated_fields = {"slug": ("title",)}
 
 
+class BlogSectionInline(admin.StackedInline):
+    model = BlogSection
+    extra = 0
+    fields = ("title", "description", "image", "order")
+    ordering = ("order", "created_at")
+
+
 @admin.register(BlogPost)
 class BlogPostAdmin(admin.ModelAdmin):
     list_display = (
@@ -65,6 +125,44 @@ class BlogPostAdmin(admin.ModelAdmin):
     prepopulated_fields = {"slug": ("title",)}
     raw_id_fields = ("author",)
     date_hierarchy = "published_at"
+    inlines = [BlogSectionInline]
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    "title",
+                    "slug",
+                    "excerpt",
+                    "content",
+                    "author",
+                    "cover_image",
+                    "category",
+                    "tags",
+                    "is_published",
+                    "published_at",
+                    "views_count",
+                    "order",
+                )
+            },
+        ),
+        (
+            "SEO / Open Graph",
+            {
+                "fields": (
+                    "meta_title",
+                    "meta_description",
+                    "og_title",
+                    "og_description",
+                    "og_image",
+                ),
+                "description": (
+                    "OG title recommended 60 characters. OG description recommended 160. "
+                    "OG image recommended 1200×630px. Blank OG fields fall back to title, excerpt, and cover image."
+                ),
+            },
+        ),
+    )
 
 
 @admin.register(Event)
@@ -81,6 +179,42 @@ class EventAdmin(admin.ModelAdmin):
     search_fields = ("title", "slug", "location", "description")
     prepopulated_fields = {"slug": ("title",)}
     date_hierarchy = "start_datetime"
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    "title",
+                    "slug",
+                    "description",
+                    "location",
+                    "course",
+                    "start_datetime",
+                    "end_datetime",
+                    "cover_image",
+                    "is_published",
+                    "registration_url",
+                    "order",
+                )
+            },
+        ),
+        (
+            "SEO / Open Graph",
+            {
+                "fields": (
+                    "meta_title",
+                    "meta_description",
+                    "og_title",
+                    "og_description",
+                    "og_image",
+                ),
+                "description": (
+                    "OG title recommended 60 characters. OG description recommended 160. "
+                    "OG image recommended 1200×630px. Blank OG fields fall back to title, description, and cover image."
+                ),
+            },
+        ),
+    )
 
 
 @admin.register(EventRegistration)

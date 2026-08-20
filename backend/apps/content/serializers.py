@@ -13,10 +13,13 @@ from apps.content.access import user_can_access_part_media
 from apps.content.models import (
     Chapter,
     ChapterProgress,
+    ClassSchedule,
+    CourseFAQ,
     CourseProgress,
     Part,
     PartAttachment,
     PartResource,
+    Topic,
     VideoPart,
     VideoTimestamp,
     StudentProgress,
@@ -365,10 +368,182 @@ class PartAttachmentSerializer(serializers.ModelSerializer):
         return data
 
 
+class TopicSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Topic
+        fields = [
+            "id",
+            "part",
+            "title",
+            "order",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+        extra_kwargs = {
+            "part": {"required": False},
+        }
+
+    def validate(self, attrs):
+        part = (
+            attrs.get("part")
+            or self.context.get("part")
+            or getattr(self.instance, "part", None)
+        )
+        if part is None:
+            raise serializers.ValidationError({"part": "Part is required."})
+        if self.instance is None and "order" not in self.initial_data:
+            last = (
+                Topic.objects.filter(part=part)
+                .order_by("-order")
+                .values_list("order", flat=True)
+                .first()
+            )
+            attrs["order"] = (last or -1) + 1
+        return attrs
+
+
+class ClassScheduleSerializer(serializers.ModelSerializer):
+    # Backward-compatible aliases for older UIs:
+    # Some clients may still POST `start_datetime`/`end_datetime` instead of
+    # separate `date`/`start_time`/`end_time`. We accept them and map into
+    # the correct model fields.
+    start_datetime = serializers.DateTimeField(write_only=True, required=False)
+    end_datetime = serializers.DateTimeField(write_only=True, required=False, allow_null=True)
+
+    class Meta:
+        model = ClassSchedule
+        fields = [
+            "id",
+            "course",
+            "date",
+            "start_time",
+            "end_time",
+            "start_datetime",
+            "end_datetime",
+            "is_published",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "course", "created_at", "updated_at"]
+        extra_kwargs = {
+            # These are required at the model level, but we allow them to be
+            # omitted in requests when clients provide `start_datetime`
+            # (and `end_datetime`) aliases, or on PATCH of a single field.
+            "date": {"required": False},
+            "start_time": {"required": False},
+            "end_time": {"required": False},
+            "is_published": {"required": False},
+        }
+
+    def validate(self, attrs):
+        course = (
+            attrs.get("course")
+            or self.context.get("course")
+            or getattr(self.instance, "course", None)
+        )
+        start_datetime = attrs.pop("start_datetime", None)
+        end_datetime = attrs.pop("end_datetime", None)
+
+        date = attrs.get("date", getattr(self.instance, "date", None))
+        start_time = attrs.get("start_time", getattr(self.instance, "start_time", None))
+        end_time = attrs.get("end_time", getattr(self.instance, "end_time", None))
+
+        # Map legacy combined datetime inputs into separated fields.
+        if start_datetime is not None:
+            if date is not None and date != start_datetime.date():
+                raise serializers.ValidationError({"date": "date does not match start_datetime."})
+            if start_time is not None and str(start_time) != str(start_datetime.time()):
+                raise serializers.ValidationError(
+                    {"start_time": "start_time does not match start_datetime."}
+                )
+            date = start_datetime.date()
+            start_time = start_datetime.time()
+
+        if end_datetime is not None:
+            if end_time is not None and str(end_time) != str(end_datetime.time()):
+                raise serializers.ValidationError(
+                    {"end_time": "end_time does not match end_datetime."}
+                )
+            end_time = end_datetime.time()
+
+        # Enforce required fields after alias mapping.
+        errors = {}
+        if date is None:
+            errors["date"] = "This field is required."
+        if start_time is None:
+            errors["start_time"] = "This field is required."
+        if end_time is None:
+            errors["end_time"] = "This field is required."
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        # Persist mapped values into attrs so ModelSerializer can save them.
+        attrs["date"] = date
+        attrs["start_time"] = start_time
+        attrs["end_time"] = end_time
+
+        if start_time is not None and end_time is not None and end_time <= start_time:
+            errors["end_time"] = "End time must be after start time."
+        if course is not None and date and start_time and end_time:
+            overlap = ClassSchedule.objects.filter(
+                course=course,
+                date=date,
+                start_time__lt=end_time,
+                end_time__gt=start_time,
+            ).exclude(pk=getattr(self.instance, "pk", None))
+            if overlap.exists():
+                errors["start_time"] = "This time range overlaps another class on the same date."
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
+
+
+class CourseFAQSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CourseFAQ
+        fields = [
+            "id",
+            "course",
+            "question",
+            "answer",
+            "order",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "course", "created_at", "updated_at"]
+        extra_kwargs = {
+            "order": {"required": False},
+        }
+
+    def validate(self, attrs):
+        course = (
+            attrs.get("course")
+            or self.context.get("course")
+            or getattr(self.instance, "course", None)
+        )
+        nested = getattr(self, "parent", None) is not None
+        if course is None and not nested:
+            raise serializers.ValidationError({"course": "Course is required."})
+        if course is not None and self.instance is None:
+            initial = self.initial_data if isinstance(self.initial_data, dict) else {}
+            if "order" not in initial:
+                last = (
+                    CourseFAQ.objects.filter(course=course)
+                    .order_by("-order")
+                    .values_list("order", flat=True)
+                    .first()
+                )
+                attrs["order"] = 0 if last is None else last + 1
+        return attrs
+
+
 class PartSerializer(serializers.ModelSerializer):
     resources = PartResourceSerializer(many=True, read_only=True)
     attachments = PartAttachmentSerializer(many=True, read_only=True)
     video_parts = VideoPartSerializer(many=True, read_only=True)
+    topics = TopicSerializer(many=True, read_only=True)
     course = serializers.UUIDField(source="chapter.course_id", read_only=True)
     # slug is auto-generated from title, so it must not be required on create
     slug = serializers.SlugField(read_only=True)
@@ -398,6 +573,7 @@ class PartSerializer(serializers.ModelSerializer):
             "resources",
             "attachments",
             "video_parts",
+            "topics",
             "created_at",
             "updated_at",
         ]
@@ -432,6 +608,7 @@ class PartSerializer(serializers.ModelSerializer):
 
 class PartListSerializer(serializers.ModelSerializer):
     course = serializers.UUIDField(source="chapter.course_id", read_only=True)
+    topics = TopicSerializer(many=True, read_only=True)
 
     class Meta:
         model = Part
@@ -450,6 +627,7 @@ class PartListSerializer(serializers.ModelSerializer):
             "is_published",
             "estimated_minutes",
             "video_duration_seconds",
+            "topics",
             "created_at",
             "updated_at",
         ]

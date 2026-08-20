@@ -122,6 +122,101 @@ class Part(TimeStampedModel):
         return self.chapter.course
 
 
+class Topic(TimeStampedModel):
+    """Curriculum topic nested under a part (Chapter → Part → Topic)."""
+
+    part = models.ForeignKey(
+        Part,
+        on_delete=models.CASCADE,
+        related_name="topics",
+    )
+    title = models.CharField(max_length=255)
+    order = models.PositiveIntegerField(default=0, db_index=True)
+
+    class Meta:
+        ordering = ["part", "order", "id"]
+        verbose_name = _("topic")
+        verbose_name_plural = _("topics")
+        indexes = [
+            models.Index(fields=["part", "order"]),
+        ]
+
+    def __str__(self):
+        return f"{self.part_id} — {self.title}"
+
+    @property
+    def course(self):
+        return self.part.chapter.course
+
+
+class ClassSchedule(TimeStampedModel):
+    """A dated class session for a course (independent of curriculum chapters/parts).
+
+    Multiple rows may share the same date, each with its own start/end time.
+    """
+
+    course = models.ForeignKey(
+        "courses.Course",
+        on_delete=models.CASCADE,
+        related_name="class_schedules",
+    )
+    date = models.DateField(db_index=True)
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    is_published = models.BooleanField(default=True, db_index=True)
+
+    class Meta:
+        ordering = ["date", "start_time", "id"]
+        verbose_name = _("class schedule")
+        verbose_name_plural = _("class schedules")
+        indexes = [
+            models.Index(fields=["course", "date"]),
+            models.Index(fields=["course", "is_published", "date"]),
+        ]
+
+    def __str__(self):
+        return f"{self.course_id} — {self.date} {self.start_time}-{self.end_time}"
+
+    def clean(self):
+        errors = {}
+        if self.end_time and self.start_time and self.end_time <= self.start_time:
+            errors["end_time"] = _("End time must be after start time.")
+        if self.course_id and self.date and self.start_time and self.end_time:
+            overlap = (
+                ClassSchedule.objects.filter(course_id=self.course_id, date=self.date)
+                .exclude(pk=self.pk)
+                .filter(start_time__lt=self.end_time, end_time__gt=self.start_time)
+            )
+            if overlap.exists():
+                errors["start_time"] = _("This time range overlaps another class on the same date.")
+        if errors:
+            raise ValidationError(errors)
+
+
+class CourseFAQ(TimeStampedModel):
+    """Course-specific FAQ shown on the public course details page (not sitewide CMS FAQs)."""
+
+    course = models.ForeignKey(
+        "courses.Course",
+        on_delete=models.CASCADE,
+        related_name="faqs",
+    )
+    question = models.CharField(max_length=500)
+    answer = models.TextField()
+    order = models.PositiveIntegerField(default=0, db_index=True)
+
+    class Meta:
+        ordering = ["order", "created_at"]
+        verbose_name = _("course FAQ")
+        verbose_name_plural = _("course FAQs")
+        indexes = [
+            models.Index(fields=["course", "order"]),
+        ]
+
+    def __str__(self):
+        return self.question[:80]
+
+
 class PartResource(TimeStampedModel):
     """External or uploaded resource linked to a part."""
 

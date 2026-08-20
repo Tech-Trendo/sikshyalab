@@ -114,7 +114,13 @@ def user_can_access_media(user, relpath: str) -> bool:
     """
     if is_public_media(relpath):
         return True
-    return bool(user and getattr(user, "is_authenticated", False))
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if relpath.startswith("assignments/"):
+        from apps.assignments.permissions import user_can_access_assignment_media
+
+        return user_can_access_assignment_media(user, relpath)
+    return True
 
 
 def _storage_candidates(relpath: str) -> list[str]:

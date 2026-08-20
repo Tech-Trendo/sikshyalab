@@ -5,24 +5,35 @@ DRF viewsets for the content CMS.
 import logging
 
 from django.db.models import Count, Prefetch, Q
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.filters import OrderingFilter, SearchFilter
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 
+from apps.cms.models import BlogPost, BlogSection
+from apps.cms.permissions import IsAdminOrStaffWrite
+from apps.cms.serializers import BlogSectionSerializer
 from apps.common.media_cookie_auth import MediaCookieAuthentication
 from apps.common.permissions import ROLE_ADMIN, ROLE_STAFF, ROLE_STUDENT, ROLE_TEACHER, user_has_role
 from apps.content.filters import (
+    BlogSectionFilter,
     ChapterFilter,
     ChapterProgressFilter,
+    ClassScheduleFilter,
+    CourseFAQFilter,
+    CourseHighlightFilter,
     CourseProgressFilter,
     PartAttachmentFilter,
     PartFilter,
     PartResourceFilter,
+    TopicFilter,
     VideoPartFilter,
     VideoTimestampFilter,
     StudentProgressFilter,
@@ -30,10 +41,13 @@ from apps.content.filters import (
 from apps.content.models import (
     Chapter,
     ChapterProgress,
+    ClassSchedule,
+    CourseFAQ,
     CourseProgress,
     Part,
     PartAttachment,
     PartResource,
+    Topic,
     VideoPart,
     VideoTimestamp,
     StudentProgress,
@@ -49,18 +63,27 @@ from apps.content.serializers import (
     ChapterListSerializer,
     ChapterProgressSerializer,
     ChapterSerializer,
+    ClassScheduleSerializer,
+    CourseFAQSerializer,
     CourseProgressSerializer,
     PartAttachmentSerializer,
     PartListSerializer,
     PartResourceSerializer,
     PartSerializer,
+    TopicSerializer,
     VideoPartSerializer,
     VideoTimestampSerializer,
     StudentProgressSerializer,
     StudentProgressWriteSerializer,
 )
+from apps.content.schedule_utils import (
+    can_manage_course_content,
+    group_class_schedules,
+    upcoming_class_schedules_qs,
+)
 from apps.content.services import update_student_progress
-from apps.courses.models import Course
+from apps.courses.models import Course, CourseHighlight
+from apps.courses.serializers import CourseHighlightSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +102,9 @@ class ChapterViewSet(viewsets.ModelViewSet):
         ).prefetch_related(
             Prefetch(
                 "parts",
-                queryset=Part.objects.order_by("order", "id"),
+                queryset=Part.objects.prefetch_related(
+                    Prefetch("topics", queryset=Topic.objects.order_by("order", "id")),
+                ).order_by("order", "id"),
             ),
             Prefetch(
                 "video__video_parts",
@@ -174,6 +199,7 @@ class PartViewSet(viewsets.ModelViewSet):
             ),
             "attachments",
             Prefetch("video_parts", queryset=VideoPart.objects.order_by("order", "id")),
+            Prefetch("topics", queryset=Topic.objects.order_by("order", "id")),
         )
         user = self.request.user
         if user_has_role(user, ROLE_ADMIN, ROLE_STAFF):
@@ -219,6 +245,374 @@ class PartViewSet(viewsets.ModelViewSet):
             else None,
         )
         return response
+
+    @action(detail=True, methods=["get", "post"], url_path="topics")
+    def topics(self, request, pk=None):
+        """List or create topics nested under this part."""
+        part = self.get_object()
+        if request.method == "POST":
+            if user_has_role(request.user, ROLE_TEACHER) and not user_has_role(
+                request.user, ROLE_ADMIN, ROLE_STAFF
+            ):
+                course = getattr(part.chapter, "course", None)
+                if course is None or not user_teaches_course(request.user, course):
+                    return Response(
+                        {"detail": "You can only create content for courses you teach."},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+            serializer = TopicSerializer(
+                data=request.data,
+                context={"request": request, "part": part},
+            )
+            serializer.is_valid(raise_exception=True)
+            serializer.save(part=part)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        topics = part.topics.order_by("order", "id")
+        return Response(TopicSerializer(topics, many=True, context={"request": request}).data)
+
+
+class TopicViewSet(viewsets.ModelViewSet):
+    serializer_class = TopicSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrTeacherContentManager]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = TopicFilter
+    search_fields = ["title"]
+    ordering_fields = ["order", "title", "created_at"]
+    ordering = ["order", "id"]
+    http_method_names = ["get", "put", "patch", "delete", "head", "options"]
+
+    def get_queryset(self):
+        qs = Topic.objects.select_related(
+            "part",
+            "part__chapter",
+            "part__chapter__course",
+        )
+        user = self.request.user
+        if user_has_role(user, ROLE_ADMIN, ROLE_STAFF):
+            return qs
+        if user_has_role(user, ROLE_TEACHER):
+            teacher = getattr(user, "teacher", None) or getattr(user, "teacher_profile", None)
+            if teacher is None:
+                return qs.none()
+            return qs.filter(
+                Q(part__chapter__course__instructors__teacher=teacher)
+                | Q(part__chapter__course__created_by=user)
+            ).distinct()
+        return qs.filter(
+            part__is_published=True,
+            part__chapter__is_published=True,
+        )
+
+
+class CourseClassScheduleListCreateView(APIView):
+    """
+    GET/POST /api/v1/content/courses/<course_id>/class-schedules/
+
+    GET returns upcoming sessions grouped by date. POST creates one time slot.
+    """
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [AllowAny()]
+        return [IsAuthenticated(), IsAdminOrTeacherContentManager()]
+
+    def _course(self, course_id):
+        course = get_object_or_404(Course, pk=course_id)
+        user = self.request.user
+        if can_manage_course_content(user, course):
+            return course
+        if not course.is_published or course.status != Course.Status.PUBLISHED:
+            raise NotFound()
+        return course
+
+    def get(self, request, course_id):
+        course = self._course(course_id)
+        qs = upcoming_class_schedules_qs(course, request.user)
+        return Response(group_class_schedules(qs))
+
+    def post(self, request, course_id):
+        course = get_object_or_404(Course, pk=course_id)
+        if not can_manage_course_content(request.user, course):
+            return Response(
+                {"detail": "You can only create content for courses you teach."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        serializer = ClassScheduleSerializer(
+            data=request.data,
+            context={"request": request, "course": course},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save(course=course)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class ClassScheduleViewSet(viewsets.ModelViewSet):
+    serializer_class = ClassScheduleSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrTeacherContentManager]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = ClassScheduleFilter
+    ordering_fields = ["date", "start_time", "created_at"]
+    ordering = ["date", "start_time", "id"]
+    http_method_names = ["get", "put", "patch", "delete", "head", "options"]
+
+    def get_queryset(self):
+        qs = ClassSchedule.objects.select_related("course")
+        user = self.request.user
+        if user_has_role(user, ROLE_ADMIN, ROLE_STAFF):
+            return qs
+        if user_has_role(user, ROLE_TEACHER):
+            teacher = getattr(user, "teacher", None) or getattr(user, "teacher_profile", None)
+            if teacher is None:
+                return qs.none()
+            return qs.filter(
+                Q(course__instructors__teacher=teacher) | Q(course__created_by=user)
+            ).distinct()
+        today = timezone.localdate()
+        now_time = timezone.localtime().time()
+        return qs.filter(
+            is_published=True,
+            course__is_published=True,
+        ).filter(Q(date__gt=today) | Q(date=today, end_time__gte=now_time))
+
+
+class CourseHighlightListCreateView(APIView):
+    """GET/POST /api/v1/content/courses/<course_id>/highlights/"""
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [AllowAny()]
+        return [IsAuthenticated(), IsAdminOrTeacherContentManager()]
+
+    def _course(self, course_id):
+        course = get_object_or_404(Course, pk=course_id)
+        user = self.request.user
+        if can_manage_course_content(user, course):
+            return course
+        if not course.is_published or course.status != Course.Status.PUBLISHED:
+            raise NotFound()
+        return course
+
+    def get(self, request, course_id):
+        course = self._course(course_id)
+        qs = CourseHighlight.objects.filter(course=course).order_by("order", "created_at")
+        return Response(
+            CourseHighlightSerializer(qs, many=True, context={"request": request}).data
+        )
+
+    def post(self, request, course_id):
+        course = get_object_or_404(Course, pk=course_id)
+        if not can_manage_course_content(request.user, course):
+            return Response(
+                {"detail": "You can only create content for courses you teach."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        logger.info(
+            "CourseHighlight.create course=%s keys=%s heading=%r desc_len=%s order=%s user=%s",
+            course.pk,
+            sorted(getattr(request.data, "keys", lambda: [])()),
+            request.data.get("heading") or request.data.get("title"),
+            len(str(request.data.get("description") or request.data.get("text") or "")),
+            request.data.get("order"),
+            getattr(request.user, "email", request.user.pk),
+        )
+        serializer = CourseHighlightSerializer(
+            data=request.data,
+            context={"request": request, "course": course},
+        )
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save(course=course)
+        logger.info(
+            "CourseHighlight.created id=%s course=%s heading=%r",
+            instance.pk,
+            course.pk,
+            instance.heading,
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class CourseHighlightViewSet(viewsets.ModelViewSet):
+    serializer_class = CourseHighlightSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrTeacherContentManager]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = CourseHighlightFilter
+    search_fields = ["heading", "description"]
+    ordering_fields = ["order", "created_at"]
+    ordering = ["order", "created_at"]
+    http_method_names = ["get", "put", "patch", "delete", "head", "options"]
+
+    def get_queryset(self):
+        qs = CourseHighlight.objects.select_related("course")
+        user = self.request.user
+        if user_has_role(user, ROLE_ADMIN, ROLE_STAFF):
+            return qs
+        if user_has_role(user, ROLE_TEACHER):
+            teacher = getattr(user, "teacher", None) or getattr(user, "teacher_profile", None)
+            if teacher is None:
+                return qs.none()
+            return qs.filter(
+                Q(course__instructors__teacher=teacher) | Q(course__created_by=user)
+            ).distinct()
+        return qs.filter(course__is_published=True, course__status=Course.Status.PUBLISHED)
+
+
+class CourseFAQListCreateView(APIView):
+    """GET/POST /api/v1/content/courses/<course_id>/faqs/"""
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [AllowAny()]
+        return [IsAuthenticated(), IsAdminOrTeacherContentManager()]
+
+    def _course(self, course_id):
+        course = get_object_or_404(Course, pk=course_id)
+        user = self.request.user
+        if can_manage_course_content(user, course):
+            return course
+        if not course.is_published or course.status != Course.Status.PUBLISHED:
+            raise NotFound()
+        return course
+
+    def get(self, request, course_id):
+        course = self._course(course_id)
+        qs = CourseFAQ.objects.filter(course=course).order_by("order", "created_at")
+        return Response(
+            CourseFAQSerializer(qs, many=True, context={"request": request}).data
+        )
+
+    def post(self, request, course_id):
+        course = get_object_or_404(Course, pk=course_id)
+        if not can_manage_course_content(request.user, course):
+            return Response(
+                {"detail": "You can only create content for courses you teach."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        serializer = CourseFAQSerializer(
+            data=request.data,
+            context={"request": request, "course": course},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save(course=course)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class CourseFAQViewSet(viewsets.ModelViewSet):
+    serializer_class = CourseFAQSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrTeacherContentManager]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = CourseFAQFilter
+    search_fields = ["question", "answer"]
+    ordering_fields = ["order", "created_at"]
+    ordering = ["order", "created_at"]
+    http_method_names = ["get", "put", "patch", "delete", "head", "options"]
+
+    def get_queryset(self):
+        qs = CourseFAQ.objects.select_related("course")
+        user = self.request.user
+        if user_has_role(user, ROLE_ADMIN, ROLE_STAFF):
+            return qs
+        if user_has_role(user, ROLE_TEACHER):
+            teacher = getattr(user, "teacher", None) or getattr(user, "teacher_profile", None)
+            if teacher is None:
+                return qs.none()
+            return qs.filter(
+                Q(course__instructors__teacher=teacher) | Q(course__created_by=user)
+            ).distinct()
+        return qs.filter(course__is_published=True, course__status=Course.Status.PUBLISHED)
+
+
+class BlogPostSectionListCreateView(APIView):
+    """GET/POST /api/v1/content/blog-posts/<post_id>/sections/"""
+
+    permission_classes = [IsAdminOrStaffWrite]
+
+    def _blog_post(self, post_id):
+        post = get_object_or_404(BlogPost, pk=post_id)
+        user = self.request.user
+        if user.is_authenticated and user_has_role(user, ROLE_ADMIN, ROLE_STAFF):
+            return post
+        if not post.is_published:
+            raise NotFound()
+        return post
+
+    def get(self, request, post_id):
+        post = self._blog_post(post_id)
+        qs = BlogSection.objects.filter(blog_post=post).order_by("order", "created_at")
+        return Response(
+            BlogSectionSerializer(qs, many=True, context={"request": request}).data
+        )
+
+    def post(self, request, post_id):
+        post = get_object_or_404(BlogPost, pk=post_id)
+        serializer = BlogSectionSerializer(
+            data=request.data,
+            context={"request": request, "blog_post": post},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save(blog_post=post)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class BlogPostSectionDetailView(APIView):
+    """GET/PATCH/PUT/DELETE /api/v1/content/blog-posts/<post_id>/sections/<section_id>/"""
+
+    permission_classes = [IsAdminOrStaffWrite]
+
+    def _section(self, post_id, section_id):
+        user = self.request.user
+        qs = BlogSection.objects.select_related("blog_post")
+        if not (
+            user.is_authenticated and user_has_role(user, ROLE_ADMIN, ROLE_STAFF)
+        ):
+            qs = qs.filter(blog_post__is_published=True)
+        return get_object_or_404(qs, pk=section_id, blog_post_id=post_id)
+
+    def get(self, request, post_id, section_id):
+        section = self._section(post_id, section_id)
+        return Response(
+            BlogSectionSerializer(section, context={"request": request}).data
+        )
+
+    def patch(self, request, post_id, section_id):
+        return self._update(request, post_id, section_id, partial=True)
+
+    def put(self, request, post_id, section_id):
+        return self._update(request, post_id, section_id, partial=False)
+
+    def _update(self, request, post_id, section_id, *, partial):
+        section = self._section(post_id, section_id)
+        serializer = BlogSectionSerializer(
+            section,
+            data=request.data,
+            partial=partial,
+            context={"request": request, "blog_post": section.blog_post},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, post_id, section_id):
+        section = self._section(post_id, section_id)
+        section.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class BlogSectionViewSet(viewsets.ModelViewSet):
+    serializer_class = BlogSectionSerializer
+    permission_classes = [IsAdminOrStaffWrite]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = BlogSectionFilter
+    search_fields = ["title", "description"]
+    ordering_fields = ["order", "created_at"]
+    ordering = ["order", "created_at"]
+    http_method_names = ["get", "put", "patch", "delete", "head", "options"]
+
+    def get_queryset(self):
+        qs = BlogSection.objects.select_related("blog_post")
+        user = self.request.user
+        if user.is_authenticated and user_has_role(user, ROLE_ADMIN, ROLE_STAFF):
+            return qs
+        return qs.filter(blog_post__is_published=True)
 
 
 class PartResourceViewSet(viewsets.ModelViewSet):
@@ -345,6 +739,9 @@ class PartResourceViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         resource = serializer.save()
         self._enqueue_video_compression(resource)
+        # Ensure 201 body reflects processing (serializer.instance can be stale).
+        resource.refresh_from_db()
+        serializer.instance = resource
 
     def perform_update(self, serializer):
         previous_file = None
@@ -358,6 +755,8 @@ class PartResourceViewSet(viewsets.ModelViewSet):
             and resource.file.name != previous_file
         ):
             self._enqueue_video_compression(resource, force_new_original=True)
+            resource.refresh_from_db()
+            serializer.instance = resource
 
     def _enqueue_video_compression(self, resource: PartResource, *, force_new_original: bool = False):
         if resource.resource_type != PartResource.ResourceType.VIDEO or not resource.file:

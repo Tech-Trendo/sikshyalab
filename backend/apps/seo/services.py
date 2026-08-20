@@ -98,10 +98,15 @@ def ensure_default_sitemap_entries() -> int:
         _, was_created = SitemapEntry.objects.get_or_create(
             url_path=path,
             defaults={
+                "title": "Home" if path == "/" else path.strip("/").replace("-", " ").title(),
+                "slug": "home" if path == "/" else path.strip("/").replace("/", "-"),
+                "page_type": SitemapEntry.PageType.PAGE,
                 "priority": priority,
                 "changefreq": changefreq,
                 "lastmod": now,
                 "is_active": True,
+                "is_published": True,
+                "is_indexable": True,
             },
         )
         if was_created:
@@ -115,10 +120,15 @@ def ensure_default_sitemap_entries() -> int:
             _, was_created = SitemapEntry.objects.get_or_create(
                 url_path=path,
                 defaults={
+                    "title": course.slug.replace("-", " ").title(),
+                    "slug": f"courses-{course.slug}",
+                    "page_type": SitemapEntry.PageType.COURSE,
                     "priority": 0.85,
                     "changefreq": "weekly",
                     "lastmod": course.updated_at or now,
                     "is_active": True,
+                    "is_published": True,
+                    "is_indexable": True,
                 },
             )
             if was_created:
@@ -134,10 +144,15 @@ def ensure_default_sitemap_entries() -> int:
             _, was_created = SitemapEntry.objects.get_or_create(
                 url_path=path,
                 defaults={
+                    "title": post.slug.replace("-", " ").title(),
+                    "slug": f"blog-{post.slug}",
+                    "page_type": SitemapEntry.PageType.BLOG,
                     "priority": 0.7,
                     "changefreq": "monthly",
                     "lastmod": post.updated_at or now,
                     "is_active": True,
+                    "is_published": True,
+                    "is_indexable": True,
                 },
             )
             if was_created:
@@ -148,10 +163,15 @@ def ensure_default_sitemap_entries() -> int:
             _, was_created = SitemapEntry.objects.get_or_create(
                 url_path=path,
                 defaults={
+                    "title": event.slug.replace("-", " ").title(),
+                    "slug": f"events-{event.slug}",
+                    "page_type": SitemapEntry.PageType.EVENT,
                     "priority": 0.7,
                     "changefreq": "weekly",
                     "lastmod": event.updated_at or now,
                     "is_active": True,
+                    "is_published": True,
+                    "is_indexable": True,
                 },
             )
             if was_created:

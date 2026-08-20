@@ -1,6 +1,6 @@
 """CMS content viewsets (pages, media, listings)."""
 
-from django.db.models import F, Q
+from django.db.models import F, Prefetch, Q
 from django.utils import timezone
 from django_filters import rest_framework as filters
 from django_filters.rest_framework import DjangoFilterBackend
@@ -14,6 +14,7 @@ from apps.cms.models import (
     Announcement,
     Banner,
     BlogPost,
+    BlogSection,
     Career,
     CMSTeacherHighlight,
     Event,
@@ -174,13 +175,15 @@ class PageViewSet(PublishedPublicMixin, viewsets.ModelViewSet):
 
 
 class BlogPostViewSet(PublishedPublicMixin, viewsets.ModelViewSet):
-    queryset = BlogPost.objects.select_related("author")
+    queryset = BlogPost.objects.select_related("author").prefetch_related(
+        Prefetch("sections", queryset=BlogSection.objects.order_by("order", "created_at")),
+    )
     serializer_class = BlogPostSerializer
     permission_classes = [IsAdminOrStaffWrite]
     lookup_field = "slug"
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ["category", "is_published", "author"]
-    search_fields = ["title", "slug", "excerpt", "content", "tags"]
+    search_fields = ["title", "slug", "excerpt", "content", "tags", "sections__description"]
     ordering_fields = ["published_at", "views_count", "created_at", "order"]
     ordering = ["-published_at"]
 

@@ -21,6 +21,8 @@ from apps.assignments.permissions import (
     IsAssignmentParticipant,
     get_student_for_user,
     get_teacher_for_user,
+    teacher_assignment_q,
+    teacher_manages_assignment,
 )
 from apps.assignments.serializers import (
     AssignmentAllocationSerializer,
@@ -106,7 +108,7 @@ class AssignmentViewSet(viewsets.ModelViewSet):
             return qs
         teacher = get_teacher_for_user(user)
         if teacher:
-            return qs.filter(teacher=teacher)
+            return qs.filter(teacher_assignment_q(teacher))
         student = get_student_for_user(user)
         if student:
             from django.db.models import Exists, OuterRef
@@ -151,14 +153,40 @@ class AssignmentViewSet(viewsets.ModelViewSet):
         assignment = self.get_object()
         assignment.status = Assignment.Status.PUBLISHED
         assignment.save(update_fields=["status", "updated_at"])
-        return success_response(data=AssignmentSerializer(assignment).data)
+        return success_response(data=self.get_serializer(assignment).data)
 
     @action(detail=True, methods=["post"], url_path="close")
     def close(self, request, pk=None):
         assignment = self.get_object()
         assignment.status = Assignment.Status.CLOSED
         assignment.save(update_fields=["status", "updated_at"])
-        return success_response(data=AssignmentSerializer(assignment).data)
+        return success_response(data=self.get_serializer(assignment).data)
+
+    @action(detail=True, methods=["get"], url_path="submissions")
+    def submissions(self, request, pk=None):
+        """List submissions for this assignment (own rows for students; all for teachers)."""
+        assignment = self.get_object()
+        qs = (
+            Submission.objects.filter(assignment=assignment)
+            .select_related("assignment", "assignment__teacher", "student")
+            .prefetch_related("review")
+        )
+        user = request.user
+        if not user_has_role(user, ROLE_ADMIN, ROLE_STAFF):
+            teacher = get_teacher_for_user(user)
+            student = get_student_for_user(user)
+            if teacher and teacher_manages_assignment(teacher, assignment):
+                pass
+            elif student:
+                qs = qs.filter(student=student)
+            else:
+                qs = qs.none()
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = SubmissionSerializer(page, many=True, context={"request": request})
+            return self.get_paginated_response(serializer.data)
+        serializer = SubmissionSerializer(qs, many=True, context={"request": request})
+        return success_response(data=serializer.data)
 
 
 class AssignmentResourceViewSet(viewsets.ModelViewSet):
@@ -176,7 +204,7 @@ class AssignmentResourceViewSet(viewsets.ModelViewSet):
             return qs
         teacher = get_teacher_for_user(user)
         if teacher:
-            return qs.filter(assignment__teacher=teacher)
+            return qs.filter(assignment__in=Assignment.objects.filter(teacher_assignment_q(teacher)))
         student = get_student_for_user(user)
         if student:
             return qs.filter(assignment__status=Assignment.Status.PUBLISHED)
@@ -202,7 +230,7 @@ class AssignmentAllocationViewSet(viewsets.ModelViewSet):
             return qs
         teacher = get_teacher_for_user(user)
         if teacher:
-            return qs.filter(assignment__teacher=teacher)
+            return qs.filter(assignment__in=Assignment.objects.filter(teacher_assignment_q(teacher)))
         return qs.none()
 
 
@@ -224,7 +252,7 @@ class SubmissionViewSet(viewsets.ModelViewSet):
             return qs
         teacher = get_teacher_for_user(user)
         if teacher:
-            return qs.filter(assignment__teacher=teacher)
+            return qs.filter(assignment__in=Assignment.objects.filter(teacher_assignment_q(teacher)))
         student = get_student_for_user(user)
         if student:
             return qs.filter(student=student)
@@ -281,9 +309,27 @@ class SubmissionViewSet(viewsets.ModelViewSet):
             attempt_number=attempt,
         )
         return created_response(
-            data=SubmissionSerializer(submission).data,
+            data=self.get_serializer(submission).data,
             message="Submission recorded.",
         )
+
+    @action(detail=False, methods=["get"], url_path="mine")
+    def mine(self, request):
+        """Latest submission for the current student, optionally filtered by assignment."""
+        student = get_student_for_user(request.user)
+        if student is None:
+            return error_response(
+                message="Student profile not found.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        qs = self.get_queryset().filter(student=student)
+        assignment_id = request.query_params.get("assignment")
+        if assignment_id:
+            qs = qs.filter(assignment_id=assignment_id)
+        latest = qs.order_by("-submitted_at", "-attempt_number").first()
+        if latest is None:
+            return success_response(data=None, message="No submission found.")
+        return success_response(data=self.get_serializer(latest).data)
 
     def get_permissions(self):
         if self.action in ("update", "partial_update", "destroy"):
@@ -324,8 +370,10 @@ class SubmissionViewSet(viewsets.ModelViewSet):
 
         return success_response(
             data={
-                "submission": SubmissionSerializer(submission).data,
-                "review": SubmissionReviewSerializer(review).data,
+                "submission": self.get_serializer(submission).data,
+                "review": SubmissionReviewSerializer(
+                    review, context={"request": request}
+                ).data,
             },
             message="Submission graded.",
         )
@@ -351,7 +399,11 @@ class SubmissionReviewViewSet(viewsets.ModelViewSet):
             return qs
         teacher = get_teacher_for_user(user)
         if teacher:
-            return qs.filter(submission__assignment__teacher=teacher)
+            return qs.filter(
+                submission__assignment__in=Assignment.objects.filter(
+                    teacher_assignment_q(teacher)
+                )
+            )
         student = get_student_for_user(user)
         if student:
             return qs.filter(submission__student=student)

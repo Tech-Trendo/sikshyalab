@@ -42,7 +42,11 @@ class ShikshaLabJWTAuthentication(JWTAuthentication):
             raise InvalidToken(_("Token contained no recognizable user identification")) from exc
 
         try:
-            user = User.objects.get(**{api_settings.USER_ID_FIELD: user_id})
+            # Prefetch student_profile so is_student_inactive() avoids an extra query
+            # on every authenticated request.
+            user = User.objects.select_related("student_profile").get(
+                **{api_settings.USER_ID_FIELD: user_id}
+            )
         except User.DoesNotExist as exc:
             raise AuthenticationFailed(_("User not found"), code="user_not_found") from exc
 

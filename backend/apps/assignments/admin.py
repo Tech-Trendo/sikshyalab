@@ -68,12 +68,27 @@ class SubmissionAdmin(admin.ModelAdmin):
         "status",
         "attempt_number",
         "submitted_at",
+        "has_attachment",
     )
     list_filter = ("status",)
     search_fields = ("content", "assignment__title", "student__user__email")
     raw_id_fields = ("assignment", "student")
     inlines = [SubmissionReviewInline]
     date_hierarchy = "submitted_at"
+    fields = (
+        "assignment",
+        "student",
+        "content",
+        "attachment",
+        "submitted_at",
+        "status",
+        "attempt_number",
+    )
+    readonly_fields = ("submitted_at",)
+
+    @admin.display(boolean=True, description="File")
+    def has_attachment(self, obj):
+        return bool(obj.attachment)
 
 
 @admin.register(SubmissionReview)

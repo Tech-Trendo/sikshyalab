@@ -4,7 +4,8 @@ API views for the courses app.
 
 import logging
 
-from django.db.models import Prefetch, Q
+from django.db.models import Count, IntegerField, OuterRef, Prefetch, Q, Subquery, Value
+from django.db.models.functions import Coalesce
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -13,23 +14,49 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from apps.common.permissions import ROLE_ADMIN, ROLE_STAFF, ROLE_TEACHER, user_has_role
-from apps.content.models import Chapter, Part, VideoPart
+from apps.content.models import Chapter, Part, Topic, VideoPart
 from apps.courses.filters import (
     CourseCategoryFilter,
-    CourseFAQFilter,
     CourseFilter,
     CourseInstructorFilter,
 )
-from apps.courses.models import Course, CourseCategory, CourseFAQ, CourseInstructor
+from apps.courses.models import Course, CourseCategory, CourseHighlight, CourseInstructor
+from apps.content.models import CourseFAQ
 from apps.courses.permissions import IsAdminOrReadOnlyCategory, IsAdminOrReadOnlyCourse
 from apps.courses.serializers import (
     CourseCategorySerializer,
-    CourseFAQSerializer,
     CourseInstructorSerializer,
     CourseListSerializer,
     CourseSerializer,
 )
 from apps.common.responses import success_response
+from apps.enrollments.models import Enrollment
+
+_COUNTED_ENROLLMENT_STATUSES = (
+    Enrollment.Status.APPROVED,
+    Enrollment.Status.ACTIVE,
+    Enrollment.Status.COMPLETED,
+    Enrollment.Status.SUSPENDED,
+)
+
+
+def _annotate_students_count(qs):
+    """Single subquery for students_count (safe with teacher .distinct() filters)."""
+    enrollment_counts = (
+        Enrollment.objects.filter(
+            course_id=OuterRef("pk"),
+            status__in=_COUNTED_ENROLLMENT_STATUSES,
+        )
+        .values("course_id")
+        .annotate(c=Count("student_id", distinct=True))
+        .values("c")[:1]
+    )
+    return qs.annotate(
+        students_count_annotated=Coalesce(
+            Subquery(enrollment_counts, output_field=IntegerField()),
+            Value(0),
+        )
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +83,6 @@ def _part_url(part) -> str:
 
 
 class CourseCategoryViewSet(viewsets.ModelViewSet):
-    queryset = CourseCategory.objects.select_related("parent").prefetch_related("children")
     serializer_class = CourseCategorySerializer
     permission_classes = [IsAdminOrReadOnlyCategory]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
@@ -66,6 +92,23 @@ class CourseCategoryViewSet(viewsets.ModelViewSet):
     ordering = ["order", "name"]
     lookup_field = "slug"
     lookup_value_regex = r"[-a-zA-Z0-9_]+"
+
+    def get_queryset(self):
+        return (
+            CourseCategory.objects.select_related("parent")
+            .prefetch_related("children")
+            .annotate(
+                children_count_annotated=Count("children", distinct=True),
+                course_count_annotated=Count(
+                    "courses",
+                    filter=Q(
+                        courses__is_published=True,
+                        courses__status=Course.Status.PUBLISHED,
+                    ),
+                    distinct=True,
+                ),
+            )
+        )
 
 
 class CourseViewSet(viewsets.ModelViewSet):
@@ -86,12 +129,27 @@ class CourseViewSet(viewsets.ModelViewSet):
     lookup_value_regex = r"[-a-zA-Z0-9_]+"
 
     def get_queryset(self):
-        qs = Course.objects.select_related(
-            "created_by",
-        ).prefetch_related(
+        prefetches = [
             "categories",
             "instructors__teacher__user",
-            "faqs",
+        ]
+        if self.action in ("retrieve", "update", "partial_update"):
+            prefetches.extend(
+                [
+                    Prefetch(
+                        "faqs",
+                        queryset=CourseFAQ.objects.order_by("order", "created_at"),
+                    ),
+                    Prefetch(
+                        "highlights",
+                        queryset=CourseHighlight.objects.order_by("order", "created_at"),
+                    ),
+                ]
+            )
+        qs = _annotate_students_count(
+            Course.objects.select_related(
+                "created_by",
+            ).prefetch_related(*prefetches)
         )
         user = self.request.user
         if user.is_authenticated and user_has_role(user, ROLE_ADMIN, ROLE_STAFF):
@@ -142,7 +200,12 @@ class CourseViewSet(viewsets.ModelViewSet):
             Chapter.objects.filter(course=course, is_published=True)
             .select_related("video")
             .prefetch_related(
-                Prefetch("parts", queryset=Part.objects.order_by("order", "id")),
+                Prefetch(
+                    "parts",
+                    queryset=Part.objects.prefetch_related(
+                        Prefetch("topics", queryset=Topic.objects.order_by("order", "id")),
+                    ).order_by("order", "id"),
+                ),
                 Prefetch(
                     "video__video_parts",
                     queryset=VideoPart.objects.order_by("order", "id"),
@@ -181,6 +244,18 @@ class CourseViewSet(viewsets.ModelViewSet):
                     "type": (part.content_type or "VIDEO").lower(),
                     "duration": _format_duration(part.video_duration_seconds),
                     "is_preview": bool(part.is_preview),
+                    "topics": [
+                        {
+                            "id": topic.id,
+                            "title": topic.title,
+                            "order": topic.order,
+                        }
+                        for topic in list(
+                            getattr(part, "_prefetched_objects_cache", {}).get(
+                                "topics", part.topics.order_by("order", "id")
+                            )
+                        )
+                    ],
                 }
                 for part in chapter_parts
                 if part.is_published and part.pk != chapter.video_id
@@ -194,6 +269,21 @@ class CourseViewSet(viewsets.ModelViewSet):
                 }
             )
         return success_response(data=payload)
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="class-schedules",
+        permission_classes=[AllowAny],
+        authentication_classes=[],
+    )
+    def class_schedules(self, request, slug=None):
+        """Public upcoming class sessions grouped by date (same fetch pattern as curriculum)."""
+        from apps.content.schedule_utils import group_class_schedules, upcoming_class_schedules_qs
+
+        course = self.get_object()
+        qs = upcoming_class_schedules_qs(course, public_only=True)
+        return success_response(data=group_class_schedules(qs))
 
     @action(detail=True, methods=["get", "put", "patch"], url_path="seo")
     def seo(self, request, slug=None):
@@ -402,22 +492,3 @@ class CourseInstructorViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
         return super().destroy(request, *args, **kwargs)
-
-
-class CourseFAQViewSet(viewsets.ModelViewSet):
-    queryset = CourseFAQ.objects.select_related("course")
-    serializer_class = CourseFAQSerializer
-    permission_classes = [IsAuthenticated, IsAdminOrReadOnlyCourse]
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_class = CourseFAQFilter
-    search_fields = ["question", "answer"]
-    ordering_fields = ["order", "created_at"]
-    ordering = ["order", "created_at"]
-
-    def create(self, request, *args, **kwargs):
-        if not user_has_role(request.user, ROLE_ADMIN, ROLE_STAFF):
-            return Response(
-                {"detail": "Only admins can create FAQs."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        return super().create(request, *args, **kwargs)
