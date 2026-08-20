@@ -42,9 +42,16 @@ type Rgb = { r: number; g: number; b: number };
 
 function escapePdfText(s: string) {
   return String(s ?? "")
+    .replace(/\u2026/g, "...")
+    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, "")
     .replace(/\\/g, "\\\\")
     .replace(/\(/g, "\\(")
     .replace(/\)/g, "\\)");
+}
+
+function truncate(s: string, max: number) {
+  const t = String(s ?? "");
+  return t.length <= max ? t : `${t.slice(0, Math.max(0, max - 3))}...`;
 }
 
 function setFill(stream: string[], color: Rgb) {
@@ -70,33 +77,31 @@ function drawText(
 ) {
   const font = opts?.bold ? "/F2" : "/F1";
   const label = escapePdfText(truncate(text, opts?.maxWidth ? Math.floor(opts.maxWidth / (size * 0.5)) : 80));
-  if (opts?.color) setFill(stream, opts.color);
+  setFill(stream, opts?.color ?? PDF_BRAND.text);
   stream.push("BT", `${font} ${size} Tf`, `${x} ${y} Td`, `(${label}) Tj`, "ET");
-  if (opts?.color) setFill(stream, PDF_BRAND.text);
 }
 
-function truncate(s: string, max: number) {
-  const t = String(s ?? "");
-  return t.length <= max ? t : `${t.slice(0, Math.max(0, max - 1))}…`;
+function centeredTextX(text: string, pageW: number, fontSize: number, bold = false) {
+  const charWidth = fontSize * (bold ? 0.55 : 0.5);
+  return pageW / 2 - (text.length * charWidth) / 2;
 }
 
 function drawBrandHeader(stream: string[], pageW: number, pageH: number, meta: BrandedPdfMeta) {
   const barH = 28;
   setFill(stream, PDF_BRAND.primary);
-  drawRect(stream, 0, pageH - barH, pageW * 0.72, barH);
-  setFill(stream, PDF_BRAND.accent);
-  drawRect(stream, pageW * 0.72, pageH - barH, pageW * 0.28, barH);
+  drawRect(stream, 0, pageH - barH, pageW, barH);
 
-  drawText(stream, 40, pageH - 19, PDF_BRAND.instituteName, 14, { bold: true, color: PDF_BRAND.white });
-  drawText(stream, pageW - 40, pageH - 19, "Official Report", 10, { color: PDF_BRAND.white, maxWidth: 120 });
+  const name = PDF_BRAND.instituteName;
+  drawText(stream, centeredTextX(name, pageW, 14, true), pageH - 19, name, 14, {
+    bold: true,
+    color: PDF_BRAND.white,
+  });
 
   drawText(stream, 40, pageH - 58, meta.title, 18, { bold: true, color: PDF_BRAND.primary });
-  const subtitle = meta.subtitle || `Generated ${meta.generatedAt || new Date().toLocaleString()}`;
-  drawText(stream, 40, pageH - 76, subtitle, 9, { color: PDF_BRAND.muted });
 
   setStroke(stream, PDF_BRAND.border);
   stream.push("1 w");
-  drawRect(stream, 40, pageH - 88, pageW - 80, 0.5, false);
+  drawRect(stream, 40, pageH - 68, pageW - 80, 0.5, false);
 }
 
 function drawBrandFooter(stream: string[], pageW: number, pageNum: number, totalPages: number) {
@@ -127,13 +132,15 @@ export function buildBrandedReportPdf(
   const pageW = 612;
   const pageH = 792;
   const rowsPerPage = 22;
-  const rowPages = paginateRows(rows, rowsPerPage);
+  const normalizedRows = rows.map((row) => row.map((cell) => String(cell ?? "")));
+  const rowPages = paginateRows(normalizedRows, rowsPerPage);
   const totalPages = rowPages.length;
   const colCount = Math.max(headers.length, 1);
   const tableW = pageW - 80;
   const colW = tableW / colCount;
   const headerH = 22;
   const rowH = 18;
+  const isEmpty = normalizedRows.length === 0;
 
   const pageStreams: string[] = [];
 
@@ -144,10 +151,10 @@ export function buildBrandedReportPdf(
 
     drawBrandHeader(stream, pageW, pageH, {
       ...meta,
-      subtitle: pageIndex === 0 ? meta.subtitle : `${meta.title} (continued)`,
+      title: pageIndex === 0 ? meta.title : `${meta.title} (continued)`,
     });
 
-    let y = pageH - 110;
+    let y = pageH - 90;
 
     setFill(stream, PDF_BRAND.primary);
     drawRect(stream, 40, y - headerH, tableW, headerH);
@@ -156,23 +163,35 @@ export function buildBrandedReportPdf(
     });
     y -= headerH;
 
-    pageRows.forEach((row, rowIndex) => {
-      if (rowIndex % 2 === 1) {
-        setFill(stream, PDF_BRAND.rowAlt);
-        drawRect(stream, 40, y - rowH, tableW, rowH);
-      }
-      setStroke(stream, PDF_BRAND.border);
-      stream.push("0.25 w");
-      drawRect(stream, 40, y - rowH, tableW, rowH, false);
-
-      row.forEach((cell, i) => {
-        drawText(stream, 46 + i * colW, y - 13, String(cell ?? ""), 8, { maxWidth: colW - 10 });
-      });
+    if (isEmpty && pageIndex === 0) {
+      drawText(stream, 46, y - 13, "No data available", 10, { color: PDF_BRAND.muted });
       y -= rowH;
-    });
+    } else {
+      pageRows.forEach((row, rowIndex) => {
+        if (rowIndex % 2 === 1) {
+          setFill(stream, PDF_BRAND.rowAlt);
+          drawRect(stream, 40, y - rowH, tableW, rowH);
+        }
+        setStroke(stream, PDF_BRAND.border);
+        stream.push("0.25 w");
+        drawRect(stream, 40, y - rowH, tableW, rowH, false);
+
+        row.forEach((cell, i) => {
+          drawText(stream, 46 + i * colW, y - 13, String(cell ?? ""), 8, { maxWidth: colW - 10 });
+        });
+        y -= rowH;
+      });
+    }
 
     if (pageIndex === totalPages - 1) {
-      drawText(stream, 40, y - 16, `Total records: ${rows.length}`, 9, { bold: true, color: PDF_BRAND.primary });
+      drawText(
+        stream,
+        40,
+        y - 16,
+        isEmpty ? "Total records: 0" : `Total records: ${normalizedRows.length}`,
+        9,
+        { bold: true, color: PDF_BRAND.primary },
+      );
     }
 
     drawBrandFooter(stream, pageW, pageIndex + 1, totalPages);
@@ -240,40 +259,63 @@ export function buildBrandedCertificatePdf(data: CertificatePdfData): Uint8Array
 }
 
 function assemblePdf(pageStreams: string[], pageW: number, pageH: number): Uint8Array {
-  const contentStart = 4;
-  const fontRegular = contentStart + pageStreams.length * 2;
-  const fontBold = fontRegular + 1;
+  let nextId = 1;
+  const catalogId = nextId++;
+  const pagesId = nextId++;
+  const fontRegularId = nextId++;
+  const fontBoldId = nextId++;
+  const pageIds: number[] = [];
+  const contentIds: number[] = [];
+  for (let i = 0; i < pageStreams.length; i += 1) {
+    pageIds.push(nextId++);
+    contentIds.push(nextId++);
+  }
+  const totalObjects = nextId - 1;
 
-  const objects: string[] = [];
-  objects.push("1 0 obj<< /Type /Catalog /Pages 2 0 R >>endobj\n");
-
-  const kids = pageStreams.map((_, i) => `${contentStart + i * 2} 0 R`).join(" ");
-  objects.push(`2 0 obj<< /Type /Pages /Kids [${kids}] /Count ${pageStreams.length} >>endobj\n`);
-  objects.push(`${fontRegular} 0 obj<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>endobj\n`);
-  objects.push(`${fontBold} 0 obj<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>endobj\n`);
+  const bodies = new Map<number, string>();
+  bodies.set(catalogId, `${catalogId} 0 obj<< /Type /Catalog /Pages ${pagesId} 0 R >>endobj\n`);
+  bodies.set(
+    pagesId,
+    `${pagesId} 0 obj<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageStreams.length} >>endobj\n`,
+  );
+  bodies.set(
+    fontRegularId,
+    `${fontRegularId} 0 obj<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>endobj\n`,
+  );
+  bodies.set(
+    fontBoldId,
+    `${fontBoldId} 0 obj<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>endobj\n`,
+  );
 
   pageStreams.forEach((pageStream, i) => {
-    const pageNum = contentStart + i * 2;
-    const contentNum = pageNum + 1;
-    objects.push(
-      `${pageNum} 0 obj<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Contents ${contentNum} 0 R /Resources << /Font << /F1 ${fontRegular} 0 R /F2 ${fontBold} 0 R >> >> >>endobj\n`,
+    const pageId = pageIds[i];
+    const contentId = contentIds[i];
+    bodies.set(
+      pageId,
+      `${pageId} 0 obj<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Contents ${contentId} 0 R /Resources << /Font << /F1 ${fontRegularId} 0 R /F2 ${fontBoldId} 0 R >> >> >>endobj\n`,
     );
-    objects.push(`${contentNum} 0 obj<< /Length ${pageStream.length} >>stream\n${pageStream}\nendstream\nendobj\n`);
+    bodies.set(
+      contentId,
+      `${contentId} 0 obj<< /Length ${pageStream.length} >>stream\n${pageStream}\nendstream\nendobj\n`,
+    );
   });
 
   let pdf = "%PDF-1.4\n";
-  const offsets = [0];
-  for (const obj of objects) {
-    offsets.push(pdf.length);
-    pdf += obj;
+  const offsets = new Array(totalObjects + 1).fill(0);
+  for (let id = 1; id <= totalObjects; id += 1) {
+    const body = bodies.get(id);
+    if (!body) continue;
+    offsets[id] = pdf.length;
+    pdf += body;
   }
+
   const xrefPos = pdf.length;
-  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += `xref\n0 ${totalObjects + 1}\n`;
   pdf += "0000000000 65535 f \n";
-  for (let i = 1; i < offsets.length; i++) {
-    pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
+  for (let id = 1; id <= totalObjects; id += 1) {
+    pdf += `${String(offsets[id]).padStart(10, "0")} 00000 n \n`;
   }
-  pdf += `trailer<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF`;
+  pdf += `trailer<< /Size ${totalObjects + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefPos}\n%%EOF`;
 
   return new TextEncoder().encode(pdf);
 }
