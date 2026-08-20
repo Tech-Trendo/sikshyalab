@@ -68,7 +68,13 @@ function EventsPage() {
 
   const events = useMemo(() => {
     if (!apiEvents?.length) return [];
-    return apiEvents.map((e) => ({
+    return [...apiEvents]
+      .sort((a, b) => {
+        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return tb - ta;
+      })
+      .map((e) => ({
       title: e.title,
       slug: e.slug,
       date: new Date(e.start_datetime).toLocaleDateString("en-US", {

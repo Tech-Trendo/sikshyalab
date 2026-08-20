@@ -10,8 +10,9 @@ import {
 } from "react";
 import { getAccessToken, apiAdminCreateUser } from "@/lib/api";
 import { onAuthChanged } from "@/lib/auth-events";
-import { fetchDashboardBundle, apiMutateDetailed, type DashboardBundle } from "@/lib/dashboard-api";
-import { mapDashboardBundle } from "@/lib/dashboard-mappers";
+import { fetchDashboardBundle, apiMutateDetailed, submitAssignmentMultipart, type DashboardBundle } from "@/lib/dashboard-api";
+import { fileNameFromMediaUrl, mapDashboardBundle } from "@/lib/dashboard-mappers";
+import { resolveMediaUrl } from "@/lib/media-url";
 import { buildEntityMaps, setEntityMaps, syncAfter, runDashboardSync } from "@/lib/dashboard-sync";
 import { teacherEndpoints, batchEndpoints } from "@/lib/api-endpoints";
 import { contentApi } from "@/lib/content-api";
@@ -59,6 +60,7 @@ export type SeoPage = {
   ogImage?: string;
   robots?: string;
   id?: string;
+  createdAt?: string;
 };
 export type PartResourceItem = {
   id: string;
@@ -74,15 +76,21 @@ export type PartResourceItem = {
 };
 export type StudentSubmission = {
   id: string;
+  assignmentId?: string;
   assignmentTitle: string;
   studentId: string;
+  studentUuid?: string;
   studentName: string;
   notes: string;
   fileName: string;
+  fileUrl: string | null;
+  fileType?: string;
+  fileSize?: number;
   submittedAt: string;
   score?: number;
   feedback?: string;
   status: "submitted" | "reviewed";
+  apiStatus?: string;
 };
 
 type HomepageContent = {
@@ -167,7 +175,14 @@ type DashboardData = {
   }) => number;
   importTasks: (rows: string[][]) => number;
 
-  submitAssignment: (s: Omit<StudentSubmission, "id" | "submittedAt" | "status">) => void;
+  submitAssignment: (s: {
+    assignmentTitle: string;
+    assignmentId?: string;
+    studentId: string;
+    studentName: string;
+    notes: string;
+    file?: File;
+  }) => Promise<{ ok: boolean; detail?: string }>;
   reviewSubmission: (id: string, score: number, feedback: string) => void;
 
   updateHomepage: (patch: Partial<HomepageContent>) => void;
@@ -177,6 +192,7 @@ type DashboardData = {
   updateTestimonial: (name: string, patch: Partial<Testimonial>) => void;
   updateFaq: (index: number, patch: Partial<Faq>) => void;
   updateSeoPage: (path: string, patch: Partial<SeoPage>) => void;
+  addSeoPage: (page: SeoPage) => void;
 
   /** `api` when hydrated from backend; empty until authenticated */
   dataSource: "api" | "mock";
@@ -647,6 +663,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         highlights: c.highlights,
         faqs: c.faqs,
         isPublished: true,
+        createdAt: new Date().toISOString(),
         chapters: c.chapters || [{ title: "Getting Started", parts: [{ title: "Welcome", type: "video", duration: "10:00" }] }],
       },
       ...prev,
@@ -1113,14 +1130,45 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     return data.length;
   }, []);
 
-  const submitAssignment = useCallback((s: Omit<StudentSubmission, "id" | "submittedAt" | "status">) => {
+  const submitAssignment = useCallback(async (s: {
+    assignmentTitle: string;
+    assignmentId?: string;
+    studentId: string;
+    studentName: string;
+    notes: string;
+    file?: File;
+  }) => {
+    const assignmentUuid = s.assignmentId;
+    if (!assignmentUuid) {
+      return { ok: false, detail: "Assignment is missing. Refresh and try again." };
+    }
+    const result = await submitAssignmentMultipart({
+      assignment: assignmentUuid,
+      content: s.notes,
+      attachment: s.file,
+    });
+    if (!result.ok || !result.data) {
+      return { ok: false, detail: result.error || "Could not submit assignment" };
+    }
+    const row = result.data;
+    const fileUrl = resolveMediaUrl(row.attachment) || row.attachment || null;
+    const next: StudentSubmission = {
+      id: String(row.id),
+      assignmentId: assignmentUuid,
+      assignmentTitle: s.assignmentTitle,
+      studentId: s.studentId,
+      studentName: s.studentName,
+      notes: row.content || s.notes,
+      fileName: s.file?.name || fileNameFromMediaUrl(fileUrl) || fileNameFromMediaUrl(row.attachment),
+      fileUrl,
+      fileType: s.file?.type,
+      fileSize: s.file?.size,
+      submittedAt: row.submitted_at || new Date().toISOString(),
+      status: "submitted",
+      apiStatus: row.status,
+    };
     setSubmissions((prev) => [
-      {
-        ...s,
-        id: `SUB-${Date.now()}`,
-        submittedAt: new Date().toISOString(),
-        status: "submitted",
-      },
+      next,
       ...prev.filter((x) => !(x.assignmentTitle === s.assignmentTitle && x.studentId === s.studentId)),
     ]);
     setAssignments((prev) =>
@@ -1130,7 +1178,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           : a,
       ),
     );
-  }, []);
+    void refreshData();
+    return { ok: true };
+  }, [refreshData]);
 
   const reviewSubmission = useCallback((id: string, score: number, feedback: string) => {
     setSubmissions((prev) =>
@@ -1203,6 +1253,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     setSeoPages((prev) => prev.map((p) => (p.path === path ? { ...p, ...patch } : p)));
     syncAfter({ type: "updateSeo", path, patch }, refreshData);
   }, [refreshData]);
+
+  const addSeoPage = useCallback((page: SeoPage) => {
+    setSeoPages((prev) => [page, ...prev.filter((p) => p.path !== page.path)]);
+  }, []);
 
   const taskBoard = useMemo<TaskBoard>(() => {
     const board: TaskBoard = {
@@ -1282,6 +1336,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       updateTestimonial,
       updateFaq,
       updateSeoPage,
+      addSeoPage,
       dataSource,
       loading,
       refreshData,
@@ -1300,7 +1355,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       addCertificate, importCertificates,
       addTask, updateTask, deleteTask, advanceTaskStatus, assignTasksToStudents, importTasks,
       submitAssignment, reviewSubmission,
-      updateHomepage, updateBlog, addBlog, updateEvent, updateTestimonial, updateFaq, updateSeoPage,
+      updateHomepage, updateBlog, addBlog, updateEvent, updateTestimonial, updateFaq, updateSeoPage, addSeoPage,
     ],
   );
 

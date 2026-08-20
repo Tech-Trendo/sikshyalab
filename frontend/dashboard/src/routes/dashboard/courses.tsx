@@ -11,7 +11,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { BookOpen, Users, Banknote, Star, Plus, Edit, Eye, Trash2 } from "lucide-react";
 import { inr, type Course } from "@/lib/mock";
 import { paginate, slugify } from "@/lib/dashboard-utils";
@@ -35,6 +34,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { CourseImagePicker } from "@/components/dashboard/CourseImagePicker";
+import { RichTextEditor } from "@/components/dashboard/RichTextEditor";
 import { FormTabNav } from "@/components/dashboard/FormTabNav";
 import { SeoFieldsPanel } from "@/components/dashboard/SeoFieldsPanel";
 import { HighlightsListEditor } from "@/components/dashboard/HighlightsListEditor";
@@ -53,8 +53,11 @@ import {
   reviewCountForCourse,
 } from "@/lib/rating";
 import { groupCoursesByCategory } from "@/lib/course-categories";
+import { requirePermission } from "@/lib/permission-guards";
+import { usePermissions } from "@/hooks/usePermissions";
 
 export const Route = createFileRoute("/dashboard/courses")({
+  beforeLoad: requirePermission("courses.view"),
   component: CoursesDash,
 });
 
@@ -97,6 +100,7 @@ const emptyForm = {
 
 function CoursesDash() {
   const { isAdmin, isStudent, isTeacher, user } = useAuth();
+  const { hasPermission, loading: permsLoading } = usePermissions();
   const {
     teachers,
     courses: allCourses,
@@ -110,8 +114,22 @@ function CoursesDash() {
   const { myCourses: studentCourses, paid } = useStudentScope();
   const { data: reviews = [] } = useReviewsQuery();
   const courses = isStudent ? studentCourses : isTeacher ? teacherCourses : allCourses;
-  const canManage = isAdmin && !isTeacher && !isStudent;
-  const viewOnly = isStudent;
+  const orderedCourses = useMemo(
+    () =>
+      [...courses].sort((a, b) => {
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return tb - ta;
+      }),
+    [courses],
+  );
+  const permReady = !permsLoading;
+  const canCreateCourses = permReady && hasPermission("courses.create");
+  const canUpdateCourses = permReady && hasPermission("courses.update");
+  const canDeleteCourses = permReady && hasPermission("courses.delete");
+  const canExportCourses = permReady && hasPermission("courses.export");
+  const canManage = canCreateCourses || canUpdateCourses || canDeleteCourses || canExportCourses;
+  const viewOnly = isStudent || !canManage;
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
 
@@ -131,7 +149,7 @@ function CoursesDash() {
     formBaseline ? { form: formBaseline, coverFile: undefined, ogFile: undefined } : null,
     Boolean(editing),
   );
-  const paged = paginate(courses, page);
+  const paged = paginate(orderedCourses, page);
   const totalStudents = courses.reduce((n, c) => n + c.students, 0);
   const totalRevenue = courses.reduce((n, c) => n + c.students * c.price, 0);
   const coursesByCategory = useMemo(
@@ -212,6 +230,10 @@ function CoursesDash() {
     courseCategories.filter((c) => form.categoryIds.includes(c.id)).map((c) => c.name);
 
   const deleteCourse = async (c: Course) => {
+    if (!canDeleteCourses) {
+      toast.error("You do not have permission to delete courses");
+      return;
+    }
     if (!confirm(`Delete course "${c.title}" and all its chapters/parts?`)) return;
     setDeletingCourse(c.slug);
     try {
@@ -228,6 +250,14 @@ function CoursesDash() {
   };
 
   const saveCourse = async () => {
+    if (editing && !canUpdateCourses) {
+      toast.error("You do not have permission to edit courses");
+      return;
+    }
+    if (!editing && !canCreateCourses) {
+      toast.error("You do not have permission to create courses");
+      return;
+    }
     if (!form.title.trim()) {
       setFormTab("details");
       toast.error("Course title is required");
@@ -336,7 +366,9 @@ function CoursesDash() {
               ? "Courses you have enrolled and paid for (view only)."
               : "No paid enrollments yet. Complete fee payment to unlock courses."
             : isTeacher
-              ? "Courses assigned to you — manage chapters and parts."
+              ? canManage
+                ? "Courses assigned to you — manage course details and curriculum."
+                : "Courses assigned to you — view curriculum and content."
               : "Manage courses, chapters and content."
         }
         action={
@@ -355,14 +387,21 @@ function CoursesDash() {
                 entity="courses"
                 csvHeaders={csvHeaders}
                 csvSampleRows={[]}
-                showExport
+                showImport={canCreateCourses}
+                showExport={canExportCourses}
                 exportHeaders={["Title", "Level", "Mode", "Duration", "Price"]}
                 exportRows={courses.map((c) => [c.title, c.level, c.mode, c.duration, c.price])}
-                onImport={(rows) => toast.success(`Imported ${importCourses(rows)} course(s)`)}
+                onImport={
+                  canCreateCourses
+                    ? (rows) => toast.success(`Imported ${importCourses(rows)} course(s)`)
+                    : undefined
+                }
               />
-              <Button size="sm" className="btn-highlight" onClick={openAdd}>
-                <Plus className="mr-1 h-4 w-4" /> New course
-              </Button>
+              {canCreateCourses ? (
+                <Button size="sm" className="btn-highlight" onClick={openAdd}>
+                  <Plus className="mr-1 h-4 w-4" /> New course
+                </Button>
+              ) : null}
             </div>
           ) : (
             <BulkActions
@@ -389,7 +428,7 @@ function CoursesDash() {
             tone="info"
           />
         )}
-        {canManage && (
+        {canExportCourses && (
           <StatCard label="Revenue" value={inr(totalRevenue)} icon={Banknote} tone="highlight" />
         )}
         <StatCard label="Avg rating" value={formatRating(avgRating)} icon={Star} tone="success" />
@@ -453,19 +492,19 @@ function CoursesDash() {
                             Instructor: {c.instructor}
                           </span>
                         )}
-                        {canManage && (
+                        {canExportCourses && (
                           <span className="font-semibold text-primary">{inr(c.price)}</span>
                         )}
                       </div>
                     </div>
 
                     <div className="flex flex-wrap justify-end gap-2">
-                      {canManage && (
+                      {canUpdateCourses && (
                         <Button variant="outline" size="sm" onClick={() => void openEdit(c)}>
                           <Edit className="mr-1 h-3.5 w-3.5" /> Edit
                         </Button>
                       )}
-                      {canManage && (
+                      {canDeleteCourses && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -508,11 +547,11 @@ function CoursesDash() {
         to={paged.to}
         onPageChange={setPage}
       />
-      {canManage && (
+      {canManage && isAdmin && (
         <DashboardSectionLinks role={user.role} section="/dashboard/courses" className="mt-6" />
       )}
 
-      {canManage && (
+      {(canCreateCourses || canUpdateCourses) && (
         <Dialog open={formOpen} onOpenChange={setFormOpen}>
           <DialogContent className="w-[calc(100vw-2rem)] max-w-lg sm:max-w-xl md:max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
@@ -681,13 +720,15 @@ function CoursesDash() {
                 </Select>
               </div>
               <div className="sm:col-span-2">
-                <Label>Description</Label>
-                <Textarea
-                  className="mt-1.5"
-                  rows={3}
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                />
+                <Label htmlFor="course-description">Description</Label>
+                <div className="mt-1.5">
+                  <RichTextEditor
+                    id="course-description"
+                    value={form.description}
+                    placeholder="Describe the course"
+                    onChange={(html) => setForm({ ...form, description: html })}
+                  />
+                </div>
               </div>
             </div>
             ) : null}

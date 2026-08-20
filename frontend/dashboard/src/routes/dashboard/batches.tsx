@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { format, parse } from "date-fns";
 import { DatePickerField } from "@/components/dashboard/DatePickerField";
 import { useDirtyForm } from "@/hooks/useDirtyForm";
+import { requirePermission } from "@/lib/permission-guards";
 
 const SHIFT_LABELS = ["Morning", "Daytime", "Evening", "Weekend"] as const;
 
@@ -33,6 +34,7 @@ function parseStartDate(value: string): Date | undefined {
 }
 
 export const Route = createFileRoute("/dashboard/batches")({
+  beforeLoad: requirePermission("batches.view"),
   component: BatchesPage,
 });
 

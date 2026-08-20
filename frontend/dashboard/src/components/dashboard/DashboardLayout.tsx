@@ -17,6 +17,7 @@ import { useSettings } from "@/components/dashboard/SettingsContext";
 import { ShikshaLabLogo } from "@/components/brand/ShikshaLabLogo";
 import { getAccessToken, getRefreshToken } from "@/lib/api";
 import { getWebUrl, redirectToWebLogin } from "@/lib/web-url";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const groups: Record<Role, { label: string; items: { to: string; label: string; icon: any }[] }[]> = {
   admin: [
@@ -43,6 +44,7 @@ const groups: Record<Role, { label: string; items: { to: string; label: string; 
         { to: "/dashboard/fees", label: "Fees", icon: Banknote },
         { to: "/dashboard/certificates", label: "Certificates", icon: Award },
         { to: "/dashboard/tasks", label: "Task Board", icon: Kanban },
+        { to: "/dashboard/roles-permissions", label: "Roles & Permissions", icon: Settings2 },
       ],
     },
     {
@@ -110,6 +112,25 @@ function pageTitleFromPath(path: string, role: Role): string {
   return "Dashboard";
 }
 
+function requiredPermissionForNav(to: string): string | null {
+  // Only a subset of nav items are controlled by the roles/permissions backend.
+  // Items without a mapping remain visible.
+  switch (to) {
+    case "/dashboard/students":
+      return "students.view";
+    case "/dashboard/courses":
+      return "courses.view";
+    case "/dashboard/batches":
+      return "batches.view";
+    case "/dashboard/assignments":
+      return "assignments.view";
+    case "/dashboard/resources":
+      return "content.view";
+    default:
+      return null;
+  }
+}
+
 function DashboardNav({
   role,
   path,
@@ -121,9 +142,23 @@ function DashboardNav({
   navPy: string;
   onNavigate?: () => void;
 }) {
+  const { hasPermission, loading } = usePermissions();
+
+  const shouldShowItem = (item: { to: string }) => {
+    if (role !== "teacher") return true;
+    const required = requiredPermissionForNav(item.to);
+    if (!required) return true;
+    // Avoid nav “flashing” while permissions are loading.
+    if (loading) return true;
+    return hasPermission(required);
+  };
+
   return (
     <nav className="flex-1 overflow-y-auto px-3 py-4">
-      {groups[role].map((g) => (
+      {groups[role]
+        .map((g) => ({ ...g, items: g.items.filter((item) => shouldShowItem(item)) }))
+        .filter((g) => g.items.length > 0)
+        .map((g) => (
         <div key={g.label} className="mb-4">
           <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{g.label}</p>
           <ul className="space-y-0.5">

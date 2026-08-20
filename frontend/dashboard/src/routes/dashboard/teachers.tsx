@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PageHeader, StatCard } from "@/components/dashboard/DashboardLayout";
+import { PageHeader, StatCard, ResponsiveTable } from "@/components/dashboard/DashboardLayout";
 import { BulkActions } from "@/components/dashboard/BulkActions";
 import { DataPagination } from "@/components/dashboard/DataPagination";
 import { useDashboardData, type Teacher } from "@/components/dashboard/DashboardDataContext";
@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PersonAvatar } from "@/components/dashboard/PersonAvatar";
 import { GraduationCap, BookOpen, Star, Plus, Mail, Briefcase, Layers, Trash2, Pencil } from "lucide-react";
 import { paginate } from "@/lib/dashboard-utils";
@@ -97,6 +98,62 @@ function TeachersPage() {
   const toggleBatch = (id: string, checked: boolean) => {
     setSelectedBatches((prev) => (checked ? [...prev, id] : prev.filter((b) => b !== id)));
   };
+
+  const openEditTeacher = (t: Teacher) => {
+    setEditingTeacher(t);
+    const next = {
+      name: t.name,
+      role: t.role,
+      email: t.email || "",
+      exp: t.exp,
+      bio: t.bio,
+    };
+    setForm(next);
+    setFormBaseline(next);
+    setFormOpen(true);
+  };
+
+  const teacherRating = (t: Teacher) =>
+    averageRating(
+      reviews.filter((r) =>
+        courses.some((c) => c.instructor === t.name && c.title === r.course_name),
+      ),
+    );
+
+  const renderTeacherActions = (t: Teacher, stacked = false) => (
+    <div className={stacked ? "grid grid-cols-2 gap-2" : "flex flex-wrap gap-1.5"}>
+      <Button variant="outline" size="sm" onClick={() => setProfile(t)}>
+        View profile
+      </Button>
+      <Button size="sm" onClick={() => openAssign(t)}>
+        Assign courses
+      </Button>
+      <Button
+        variant="secondary"
+        size="sm"
+        className={stacked ? "col-span-2" : undefined}
+        onClick={() => openAssignBatches(t)}
+      >
+        <Layers className="mr-1 h-3.5 w-3.5" /> Assign batches
+      </Button>
+      {isAdmin && (
+        <Button variant="outline" size="sm" className={stacked ? "col-span-2" : undefined} onClick={() => openEditTeacher(t)}>
+          <Pencil className="mr-1 h-4 w-4" /> Edit teacher
+        </Button>
+      )}
+      {isAdmin && (
+        <Button
+          variant="destructive"
+          size="sm"
+          className={stacked ? "col-span-2" : undefined}
+          onClick={() => void deleteTeacher(t)}
+          disabled={deletingTeacher === String(t._uuid)}
+        >
+          <Trash2 className="mr-1 h-4 w-4" /> Delete teacher
+        </Button>
+      )}
+    </div>
+  );
 
   const saveTeacher = async () => {
     if (!form.role.trim()) {
@@ -195,8 +252,8 @@ function TeachersPage() {
               csvHeaders={csvHeaders}
               csvSampleRows={[]}
               showExport
-              exportHeaders={["Name", "Role", "Experience", "Courses"]}
-              exportRows={teachers.map((t) => [t.name, t.role, t.exp, t.courses])}
+              exportHeaders={["Name", "Email", "Phone", "Role", "Experience", "Courses", "Status"]}
+              exportRows={teachers.map((t) => [t.name, t.email || "—", t.phone || "—", t.role, t.exp, t.courses, "Active"])}
               onImport={(rows) => toast.success(`Imported ${importTeachers(rows)} teacher(s)`)}
             />
             <Button
@@ -220,77 +277,87 @@ function TeachersPage() {
         <StatCard label="Avg rating" value={formatRating(avgRating)} icon={Star} tone="highlight" />
         <StatCard label="Active batches" value={activeBatches} icon={Plus} tone="success" />
       </div>
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {paged.items.map((t) => (
-          <Card key={t.name} className="overflow-hidden border-border/60">
-            <div className="h-20 bg-gradient-to-br from-primary/20 via-primary/5 to-highlight/20" />
-            <CardContent className="-mt-10 p-5">
-              <PersonAvatar src={t.avatar} name={t.name} className="h-16 w-16 ring-4 ring-background" />
-              <p className="mt-3 text-base font-semibold">{t.name}</p>
-              <p className="text-xs text-muted-foreground">{t.role}</p>
-              <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{t.bio}</p>
-              <div className="mt-2">
-                <Rating
-                  value={averageRating(
-                    reviews.filter((r) =>
-                      courses.some((c) => c.instructor === t.name && c.title === r.course_name),
-                    ),
-                  )}
-                  size="sm"
-                  showValue
-                  emptyLabel="No ratings yet"
-                />
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Badge variant="secondary">{t.exp}</Badge>
-                <Badge variant="secondary">{t.courses} courses</Badge>
-                <Badge className="bg-success/15 text-success hover:bg-success/20">Active</Badge>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <Button variant="outline" size="sm" onClick={() => setProfile(t)}>View profile</Button>
-                <Button size="sm" onClick={() => openAssign(t)}>Assign courses</Button>
-                {isAdmin && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="col-span-2"
-                    onClick={() => {
-                      setEditingTeacher(t);
-                      const next = {
-                        name: t.name,
-                        role: t.role,
-                        email: t.email || "",
-                        exp: t.exp,
-                        bio: t.bio,
-                      };
-                      setForm(next);
-                      setFormBaseline(next);
-                      setFormOpen(true);
-                    }}
-                  >
-                    <Pencil className="mr-1 h-4 w-4" /> Edit teacher
-                  </Button>
+      <Card className="mt-6 border-border/60">
+        <CardContent className="p-4 sm:p-5">
+          <ResponsiveTable
+            mobile={paged.items.map((t) => (
+              <Card key={t._uuid || t.email || t.name} className="border-border/60">
+                <CardContent className="p-4">
+                  <div className="flex items-start gap-3">
+                    <PersonAvatar src={t.avatar} name={t.name} className="h-12 w-12 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold">{t.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">{t.role}</p>
+                      {t.email && <p className="truncate text-xs text-muted-foreground">{t.email}</p>}
+                    </div>
+                  </div>
+                  {t.bio && <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">{t.bio}</p>}
+                  <div className="mt-3">
+                    <Rating value={teacherRating(t)} size="sm" showValue emptyLabel="No ratings yet" />
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Badge variant="secondary">{t.exp}</Badge>
+                    <Badge variant="secondary">{t.courses} courses</Badge>
+                    <Badge className="bg-success/15 text-success hover:bg-success/20">Active</Badge>
+                  </div>
+                  <div className="mt-4">{renderTeacherActions(t, true)}</div>
+                </CardContent>
+              </Card>
+            ))}
+          >
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Teacher</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Bio</TableHead>
+                  <TableHead>Experience</TableHead>
+                  <TableHead>Courses</TableHead>
+                  <TableHead>Rating</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="min-w-[420px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paged.items.map((t) => (
+                  <TableRow key={t._uuid || t.email || t.name}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <PersonAvatar src={t.avatar} name={t.name} className="h-10 w-10 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">{t.name}</p>
+                          <p className="truncate text-xs text-muted-foreground">{t.email || "—"}</p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm">{t.role}</TableCell>
+                    <TableCell className="max-w-[220px] text-sm text-muted-foreground">
+                      <p className="line-clamp-2">{t.bio || "—"}</p>
+                    </TableCell>
+                    <TableCell className="text-sm">{t.exp}</TableCell>
+                    <TableCell className="text-sm">{t.courses}</TableCell>
+                    <TableCell className="min-w-[120px]">
+                      <Rating value={teacherRating(t)} size="sm" showValue emptyLabel="No ratings yet" />
+                    </TableCell>
+                    <TableCell>
+                      <Badge className="bg-success/15 text-success hover:bg-success/20">Active</Badge>
+                    </TableCell>
+                    <TableCell>{renderTeacherActions(t)}</TableCell>
+                  </TableRow>
+                ))}
+                {teachers.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-sm text-muted-foreground">
+                      No teachers found.
+                    </TableCell>
+                  </TableRow>
                 )}
-                <Button variant="secondary" size="sm" className="col-span-2" onClick={() => openAssignBatches(t)}>
-                  <Layers className="mr-1 h-3.5 w-3.5" /> Assign batches
-                </Button>
-                {isAdmin && (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    className="col-span-2"
-                    onClick={() => void deleteTeacher(t)}
-                    disabled={deletingTeacher === String(t._uuid)}
-                  >
-                    <Trash2 className="mr-1 h-4 w-4" /> Delete teacher
-                  </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-      <DataPagination page={paged.page} totalPages={paged.totalPages} total={paged.total} from={paged.from} to={paged.to} onPageChange={setPage} />
+              </TableBody>
+            </Table>
+          </ResponsiveTable>
+          <DataPagination page={paged.page} totalPages={paged.totalPages} total={paged.total} from={paged.from} to={paged.to} onPageChange={setPage} />
+        </CardContent>
+      </Card>
 
       <Dialog
         open={formOpen}

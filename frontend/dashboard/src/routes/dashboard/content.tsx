@@ -13,7 +13,6 @@ import {
 } from "@/hooks/useCmsQueries";
 import { FAQ_SECTIONS, type CmsHomepageFeature } from "@/lib/cms-api";
 import { AboutPageEditor } from "@/components/dashboard/AboutPageEditor";
-import { MediaImagePicker } from "@/components/dashboard/MediaImagePicker";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,8 +90,6 @@ function ContentPage() {
   }, [faqs]);
 
   const [homeForm, setHomeForm] = useState(homepage);
-  const [heroImagePreview, setHeroImagePreview] = useState<string>("");
-  const [heroImageFile, setHeroImageFile] = useState<File | null>(null);
   const [featuresEyebrow, setFeaturesEyebrow] = useState("");
   const [featuresHeading, setFeaturesHeading] = useState("");
   const [features, setFeatures] = useState<CmsHomepageFeature[]>([]);
@@ -141,15 +138,12 @@ function ContentPage() {
       heroCta: homeBanner?.cta_text || social.hero_cta || prev.heroCta || "Find courses",
       logoUrl: settings?.logo || prev.logoUrl,
     }));
-    if (!heroImageFile && homeBanner?.image) {
-      setHeroImagePreview(homeBanner.image);
-    }
     if (settings?.features_eyebrow) setFeaturesEyebrow(settings.features_eyebrow);
     if (settings?.features_heading) setFeaturesHeading(settings.features_heading);
     if (settings?.homepage_features?.length) setFeatures(settings.homepage_features);
     if (settings?.testimonials_eyebrow) setTestimonialsEyebrow(settings.testimonials_eyebrow);
     if (settings?.testimonials_heading) setTestimonialsHeading(settings.testimonials_heading);
-  }, [settings, homeBanner, heroImageFile]);
+  }, [settings, homeBanner]);
 
   useEffect(() => {
     if (contactHydrated.current || (!settings && !contactPage)) return;
@@ -179,11 +173,9 @@ function ContentPage() {
       heroCta: homeForm.heroCta,
       settingId: settings?.id,
       bannerId: homeBanner?.id,
-      heroImageFile,
     });
     updateHomepage(homeForm);
-    setHeroImageFile(null);
-    if (res || homeBanner || heroImageFile) toast.success("Homepage saved to CMS");
+    if (res || homeBanner) toast.success("Homepage saved to CMS");
     else toast.error("Could not save homepage");
   };
 
@@ -358,22 +350,6 @@ function ContentPage() {
                 />
               </div>
               <div className="md:col-span-2">
-                <MediaImagePicker
-                  label="Hero image"
-                  hint="Shown on the public homepage hero. Cropped to 16:9 before upload."
-                  value={heroImagePreview}
-                  aspect="video"
-                  onChange={(preview, file) => {
-                    setHeroImagePreview(preview);
-                    setHeroImageFile(file || null);
-                  }}
-                  onClear={() => {
-                    setHeroImagePreview("");
-                    setHeroImageFile(null);
-                  }}
-                />
-              </div>
-              <div className="md:col-span-2">
                 <Button
                   className="btn-highlight"
                   disabled={saveHomepage.isPending}
@@ -428,7 +404,7 @@ function ContentPage() {
                 />
               </div>
               <div className="md:col-span-2">
-                <Label>Campus address</Label>
+                <Label>Address</Label>
                 <Textarea
                   className="mt-1.5"
                   rows={3}

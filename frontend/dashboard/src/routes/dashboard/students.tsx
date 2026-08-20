@@ -4,6 +4,8 @@ import { BulkActions } from "@/components/dashboard/BulkActions";
 import { DataPagination } from "@/components/dashboard/DataPagination";
 import { useDashboardData, type Student } from "@/components/dashboard/DashboardDataContext";
 import { useTeacherScope } from "@/components/dashboard/useTeacherScope";
+import { usePermissions } from "@/hooks/usePermissions";
+import { requirePermission } from "@/lib/permission-guards";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,6 +27,7 @@ import { credentialsMailto } from "@/lib/credentials-mailto";
 import { useDirtyForm } from "@/hooks/useDirtyForm";
 
 export const Route = createFileRoute("/dashboard/students")({
+  beforeLoad: requirePermission("students.view"),
   component: StudentsPage,
 });
 
@@ -34,6 +37,11 @@ const emptyForm = { name: "", email: "", phone: "", course: "", batch: "", shift
 function StudentsPage() {
   const { courses, batches, addStudent, updateStudent, deactivateStudent, reactivateStudent, deleteStudent, importStudents } = useDashboardData();
   const { isTeacher, myStudents } = useTeacherScope();
+  const { hasPermission, loading: permsLoading } = usePermissions();
+  const canCreateStudents = !permsLoading && hasPermission("students.create");
+  const canUpdateStudents = !permsLoading && hasPermission("students.update");
+  const canDeleteStudents = !permsLoading && hasPermission("students.delete");
+  const canExportStudents = !permsLoading && hasPermission("students.export");
   const students = myStudents;
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("all");
@@ -159,21 +167,21 @@ function StudentsPage() {
               entity="students"
               csvHeaders={csvHeaders}
               csvSampleRows={[]}
-              showImport={!isTeacher}
-              showExport={false}
+              showImport={canCreateStudents}
+              showExport={canExportStudents}
               exportHeaders={isTeacher
-                ? ["ID", "Name", "Email", "Course", "Batch", "Progress", "Status"]
-                : ["ID", "Name", "Email", "Course", "Batch", "Shift", "Status", "Progress"]}
+                ? ["ID", "Name", "Email", "Phone", "Course", "Batch", "Progress", "Status"]
+                : ["ID", "Name", "Email", "Phone", "Course", "Batch", "Shift", "Status", "Progress"]}
               exportRows={filtered.map((s) =>
                 isTeacher
-                  ? [s.id, s.name, s.email, s.course, s.batch, `${s.progress}%`, s.status]
-                  : [s.id, s.name, s.email, s.course, s.batch, s.shift, s.status, `${s.progress}%`],
+                  ? [s.id, s.name, s.email, s.phone || "—", s.course, s.batch, `${s.progress}%`, s.status]
+                  : [s.id, s.name, s.email, s.phone || "—", s.course, s.batch, s.shift, s.status, `${s.progress}%`],
               )}
               onImport={!isTeacher ? (rows) => toast.success(`Imported ${importStudents(rows)} student(s)`) : undefined}
             />
-            {!isTeacher && (
+            {canCreateStudents ? (
               <Button size="sm" className="btn-highlight" onClick={openAdd}><Plus className="mr-1 h-4 w-4" /> Add student</Button>
-            )}
+            ) : null}
           </div>
         }
       />
@@ -218,49 +226,47 @@ function StudentsPage() {
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => setViewing(s)}>View profile</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => { setProgressFor(s); const pv = String(s.progress); const pn = s.progressNote || ""; setProgressValue(pv); setProgressNote(pn); setProgressBaseline({ progressValue: pv, progressNote: pn }); }}>Review progress</DropdownMenuItem>
-                      {!isTeacher && (
-                        <>
-                          <DropdownMenuItem onClick={() => openEdit(s)}>Edit</DropdownMenuItem>
-                          {s.status === "Deactivated" ? (
-                            <DropdownMenuItem
-                              onClick={() => {
-                                if (!window.confirm(`Reactivate ${s.name}? They will be able to sign in again.`)) return;
-                                reactivateStudent(s.id);
-                                toast.success(`${s.name} reactivated`);
-                              }}
-                            >
-                              Reactivate
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => {
-                                if (
-                                  !window.confirm(
-                                    `Deactivate ${s.name}? They will be logged out and cannot sign in.`,
-                                  )
-                                ) {
-                                  return;
-                                }
-                                deactivateStudent(s.id);
-                                toast.success(`${s.name} deactivated`);
-                              }}
-                            >
-                              Deactivate
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => {
-                              if (!window.confirm(`Delete ${s.name}? This cannot be undone.`)) return;
-                              deleteStudent(s.id);
-                              toast.success(`${s.name} deleted`);
-                            }}
-                          >
-                            Delete
-                          </DropdownMenuItem>
-                        </>
-                      )}
+                      {canUpdateStudents ? <DropdownMenuItem onClick={() => openEdit(s)}>Edit</DropdownMenuItem> : null}
+                      {canUpdateStudents && (s.status === "Deactivated" ? (
+                        <DropdownMenuItem
+                          onClick={() => {
+                            if (!window.confirm(`Reactivate ${s.name}? They will be able to sign in again.`)) return;
+                            reactivateStudent(s.id);
+                            toast.success(`${s.name} reactivated`);
+                          }}
+                        >
+                          Reactivate
+                        </DropdownMenuItem>
+                      ) : (
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => {
+                            if (
+                              !window.confirm(
+                                `Deactivate ${s.name}? They will be logged out and cannot sign in.`,
+                              )
+                            ) {
+                              return;
+                            }
+                            deactivateStudent(s.id);
+                            toast.success(`${s.name} deactivated`);
+                          }}
+                        >
+                          Deactivate
+                        </DropdownMenuItem>
+                      ))}
+                      {canDeleteStudents ? (
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => {
+                            if (!window.confirm(`Delete ${s.name}? This cannot be undone.`)) return;
+                            deleteStudent(s.id);
+                            toast.success(`${s.name} deleted`);
+                          }}
+                        >
+                          Delete
+                        </DropdownMenuItem>
+                      ) : null}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -319,7 +325,7 @@ function StudentsPage() {
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => setViewing(s)}>View profile</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => { setProgressFor(s); const pv = String(s.progress); const pn = s.progressNote || ""; setProgressValue(pv); setProgressNote(pn); setProgressBaseline({ progressValue: pv, progressNote: pn }); }}>Review progress</DropdownMenuItem>
-                      {!isTeacher && (
+                      {canUpdateStudents && (
                         <>
                           <DropdownMenuItem onClick={() => openEdit(s)}>Edit</DropdownMenuItem>
                           {s.status === "Deactivated" ? (
@@ -350,16 +356,18 @@ function StudentsPage() {
                               Deactivate
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => {
-                              if (!window.confirm(`Delete ${s.name}? This cannot be undone.`)) return;
-                              deleteStudent(s.id);
-                              toast.success(`${s.name} deleted`);
-                            }}
-                          >
-                            Delete
-                          </DropdownMenuItem>
+                          {canDeleteStudents ? (
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => {
+                                if (!window.confirm(`Delete ${s.name}? This cannot be undone.`)) return;
+                                deleteStudent(s.id);
+                                toast.success(`${s.name} deleted`);
+                              }}
+                            >
+                              Delete
+                            </DropdownMenuItem>
+                          ) : null}
                         </>
                       )}
                     </DropdownMenuContent>
@@ -378,7 +386,7 @@ function StudentsPage() {
         <DataPagination page={paged.page} totalPages={paged.totalPages} total={paged.total} from={paged.from} to={paged.to} onPageChange={setPage} />
       </CardContent></Card>
 
-      {!isTeacher && (
+      {(canCreateStudents || canUpdateStudents) && (
         <Dialog open={formOpen} onOpenChange={setFormOpen}>
           <DialogContent className="w-[calc(100vw-2rem)] max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>{editing ? "Edit student" : "Add student"}</DialogTitle></DialogHeader>
@@ -511,7 +519,9 @@ function StudentsPage() {
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setViewing(null)}>Close</Button>
-                {!isTeacher && <Button onClick={() => { setViewing(null); openEdit(viewing); }}>Edit</Button>}
+                {canUpdateStudents ? (
+                  <Button onClick={() => { setViewing(null); openEdit(viewing); }}>Edit</Button>
+                ) : null}
               </DialogFooter>
             </>
           )}

@@ -18,6 +18,12 @@ import {
   emptyBlogSection,
   type BlogSectionDraft,
 } from "@/components/dashboard/BlogSectionsEditor";
+import { isEmptyRichText } from "@/lib/rich-text";
+import {
+  blogSectionImageFiles,
+  nestedBlogSections,
+  uploadBlogSectionImages,
+} from "@/lib/blog-sections-api";
 import { FormTabNav } from "@/components/dashboard/FormTabNav";
 import { SeoFieldsPanel } from "@/components/dashboard/SeoFieldsPanel";
 import { useDirtyForm } from "@/hooks/useDirtyForm";
@@ -59,6 +65,7 @@ function mapSections(post: Pick<CmsBlogPost, "sections" | "content">): BlogSecti
       id: s.id != null ? String(s.id) : undefined,
       title: String(s.title || ""),
       description: String(s.description || ""),
+      image: s.image || "",
     }));
   }
   if (post.content?.trim()) {
@@ -68,18 +75,8 @@ function mapSections(post: Pick<CmsBlogPost, "sections" | "content">): BlogSecti
 }
 
 function sectionsValid(sections: BlogSectionDraft[]) {
-  if (!sections.some((s) => s.description.trim())) return false;
-  return sections.every((s) => !s.title.trim() || Boolean(s.description.trim()));
-}
-
-function nestedSections(sections: BlogSectionDraft[]) {
-  return sections
-    .filter((s) => s.description.trim())
-    .map((s, order) => ({
-      title: s.title.trim() ? s.title.trim() : null,
-      description: s.description.trim(),
-      order,
-    }));
+  if (!sections.some((s) => !isEmptyRichText(s.description))) return false;
+  return sections.every((s) => !s.title.trim() || !isEmptyRichText(s.description));
 }
 
 function optionalSeo(metaTitle: string, metaDescription: string) {
@@ -303,14 +300,17 @@ function BlogPage() {
                         title: editBlog.title,
                         excerpt: "",
                         is_published: true,
-                        sections: nestedSections(editBlog.sections),
+                        sections: nestedBlogSections(editBlog.sections),
                         ...optionalSeo(editBlog.metaTitle, editBlog.metaDescription),
                       },
                       coverFile: editCoverFile,
                       ogFile: editOgFile,
+                      sectionFiles: blogSectionImageFiles(editBlog.sections),
                     });
                     if (res) {
-                      toast.success("Post updated");
+                      const img = await uploadBlogSectionImages(res, editBlog.sections);
+                      if (img.error) toast.error(img.error);
+                      else toast.success("Post updated");
                       setEditBlog(null);
                     } else toast.error("Could not update post");
                   } catch (err) {
@@ -412,14 +412,17 @@ function BlogPage() {
                         title: blogForm.title,
                         excerpt: "",
                         is_published: true,
-                        sections: nestedSections(blogForm.sections),
+                        sections: nestedBlogSections(blogForm.sections),
                         ...optionalSeo(blogForm.metaTitle, blogForm.metaDescription),
                       },
                       coverFile,
                       ogFile,
+                      sectionFiles: blogSectionImageFiles(blogForm.sections),
                     });
                     if (res) {
-                      toast.success("Post created");
+                      const img = await uploadBlogSectionImages(res, blogForm.sections);
+                      if (img.error) toast.error(img.error);
+                      else toast.success("Post created");
                       setNewBlogOpen(false);
                       setBlogForm(emptyForm);
                       setCoverPreview("");

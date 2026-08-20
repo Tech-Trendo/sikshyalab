@@ -35,8 +35,11 @@ import { normalizeSecureMediaKind } from "@/lib/signed-media";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { SecureMedia } from "@/components/dashboard/SecureMedia";
+import { requirePermission } from "@/lib/permission-guards";
+import { usePermissions } from "@/hooks/usePermissions";
 
 export const Route = createFileRoute("/dashboard/resources")({
+  beforeLoad: requirePermission("content.view"),
   component: ResourcesPage,
 });
 
@@ -76,6 +79,7 @@ function ResourcesPage() {
   const { partResources, addPartResource, removePartResource, courses } = useDashboardData();
   const { myCourses: teacherCourses } = useTeacherScope();
   const { myCourses: studentCourses } = useStudentScope();
+  const { hasPermission, loading: permsLoading } = usePermissions();
   const fileRef = useRef<HTMLInputElement>(null);
   const [courseSlug, setCourseSlug] = useState("");
   const [chapterIndex, setChapterIndex] = useState(0);
@@ -85,7 +89,7 @@ function ResourcesPage() {
   const [page, setPage] = useState(1);
   const [previewId, setPreviewId] = useState<string | null>(null);
 
-  const canUpload = isTeacher || isAdmin;
+  const canUpload = isAdmin || (isTeacher && !permsLoading && hasPermission("content.upload_resources"));
   // Admin: every course. Teacher: assigned courses. Student: enrolled courses.
   const visibleCourses = isAdmin
     ? courses

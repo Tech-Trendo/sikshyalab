@@ -468,7 +468,6 @@ function AdminFees() {
                 "Fees report",
                 ["Student", "Course", "Total", "Paid", "Due", "Status"],
                 feeRows.map((s) => [s.name, s.course, inr(s.fees.total), inr(s.fees.paid), inr(s.fees.due), s.feeStatus]),
-                { subtitle: `ShikshaLab fees summary — ${feeRows.length} student(s)` },
               )
             }
           >

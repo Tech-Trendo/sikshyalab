@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { FileText, Globe, Search, Share2 } from "lucide-react";
+import { FileText, Share2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { paginate } from "@/lib/dashboard-utils";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { apiList, apiMutateDetailed, type ApiSeoRow } from "@/lib/dashboard-api";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useDirtyForm } from "@/hooks/useDirtyForm";
 
@@ -20,94 +20,208 @@ export const Route = createFileRoute("/dashboard/seo")({
   component: SeoPageView,
 });
 
+const emptyTrackForm = {
+  url: "",
+  title: "",
+  description: "",
+  keywords: "",
+  ogImage: "",
+  robots: "index,follow",
+};
+
+function normalizeSeoPath(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  try {
+    if (/^https?:\/\//i.test(trimmed)) {
+      const u = new URL(trimmed);
+      return u.pathname || "/";
+    }
+  } catch {
+    return null;
+  }
+  if (trimmed.startsWith("/")) return trimmed.split("?")[0] || "/";
+  if (/^[a-z0-9][a-z0-9-._/]*$/i.test(trimmed)) {
+    return `/${trimmed.replace(/^\/+/, "")}`;
+  }
+  return null;
+}
+
+function slugFromPath(path: string): string {
+  const cleaned = path.replace(/^\/+|\/+$/g, "");
+  return cleaned.replace(/\//g, "-") || "home";
+}
+
+function toCanonicalUrl(raw: string, path: string): string {
+  if (/^https?:\/\//i.test(raw.trim())) return raw.trim();
+  if (typeof window !== "undefined" && window.location?.origin) {
+    const origin = window.location.origin.replace(/:\d+$/, "");
+    return `${origin}${path}`;
+  }
+  return path;
+}
+
+function mapApiSeoRow(row: ApiSeoRow): SeoPage {
+  const path = row.canonical_url || (row.slug ? `/${row.slug}` : "/");
+  let displayPath = path;
+  try {
+    if (/^https?:\/\//i.test(path)) displayPath = new URL(path).pathname || "/";
+  } catch {
+    displayPath = path;
+  }
+  return {
+    id: String(row.id),
+    path: displayPath,
+    title: row.meta_title || row.slug || "Page",
+    score: row.calculated_score ?? row.seo_score ?? 80,
+    description: row.meta_description || undefined,
+    keywords: row.meta_keywords || undefined,
+    canonical: row.canonical_url || undefined,
+    ogImage: row.og_image || undefined,
+    robots: row.robots || undefined,
+    createdAt: row.created_at,
+  };
+}
+
 function SeoPageView() {
-  const { seoPages, updateSeoPage } = useDashboardData();
+  const { seoPages, updateSeoPage, addSeoPage } = useDashboardData();
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<SeoPage | null>(null);
-  const home = seoPages.find((p) => p.path === "/") || seoPages[0];
-  const [homeForm, setHomeForm] = useState({
-    title: "",
-    description: "",
-    keywords: "",
-    canonical: "/",
-    ogImage: "",
-    robots: "index,follow",
-  });
-  const [homeBaseline, setHomeBaseline] = useState<typeof homeForm | null>(null);
+  const [trackForm, setTrackForm] = useState(emptyTrackForm);
   const [editingBaseline, setEditingBaseline] = useState<SeoPage | null>(null);
-  const homeDirty = useDirtyForm(homeForm, homeBaseline, Boolean(homeBaseline));
+  const [savingTrack, setSavingTrack] = useState(false);
   const seoEditDirty = useDirtyForm(editing, editingBaseline, Boolean(editing));
 
-  const homeHydrated = useRef(false);
-
-  useEffect(() => {
-    if (homeHydrated.current || !home) return;
-    homeHydrated.current = true;
-    const next = {
-      title: home.title || "",
-      description: home.description || "",
-      keywords: home.keywords || "",
-      canonical: home.canonical || home.path || "/",
-      ogImage: home.ogImage || "",
-      robots: home.robots || "index,follow",
-    };
-    setHomeForm(next);
-    setHomeBaseline(next);
-  }, [home]);
-
-  const paged = paginate(seoPages, page);
-  const avgScore = useMemo(
-    () => Math.round(seoPages.reduce((n, p) => n + p.score, 0) / Math.max(1, seoPages.length)),
+  const orderedPages = useMemo(
+    () =>
+      [...seoPages].sort((a, b) => {
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return tb - ta;
+      }),
     [seoPages],
   );
+  const paged = paginate(orderedPages, page);
+  const trackPath = normalizeSeoPath(trackForm.url);
+  const trackDirty = Boolean(trackPath);
 
-  const saveHome = () => {
-    if (!home) {
-      toast.error("No SEO row for homepage yet — create one in Django admin or seed metadata.");
+  useEffect(() => {
+    setPage(1);
+  }, [seoPages.length]);
+
+  const startTracking = async () => {
+    const path = normalizeSeoPath(trackForm.url);
+    if (!path) {
+      toast.error("Add a valid page URL or path (e.g. /about or https://example.com/about)");
       return;
     }
-    updateSeoPage(home.path, {
-      title: homeForm.title,
-      description: homeForm.description,
-      keywords: homeForm.keywords,
-      canonical: homeForm.canonical,
-      ogImage: homeForm.ogImage,
-      robots: homeForm.robots,
-      score: Math.min(
-        100,
-        Math.max(60, homeForm.title.length > 20 && homeForm.description.length > 50 ? 95 : 80),
-      ),
-    });
-    toast.success("SEO settings saved");
-    setHomeBaseline(homeForm);
+    setSavingTrack(true);
+    try {
+      const existing = seoPages.find((p) => p.path === path);
+      if (existing) {
+        updateSeoPage(existing.path, {
+          title: trackForm.title || existing.title,
+          description: trackForm.description,
+          keywords: trackForm.keywords,
+          canonical: toCanonicalUrl(trackForm.url, path),
+          ogImage: trackForm.ogImage,
+          robots: trackForm.robots,
+        });
+        addSeoPage({
+          ...existing,
+          title: trackForm.title || existing.title,
+          description: trackForm.description,
+          keywords: trackForm.keywords,
+          canonical: toCanonicalUrl(trackForm.url, path),
+          ogImage: trackForm.ogImage,
+          robots: trackForm.robots,
+          createdAt: new Date().toISOString(),
+        });
+        toast.success(`Updated tracking for ${path}`);
+        setTrackForm(emptyTrackForm);
+        setPage(1);
+        return;
+      }
+
+      const types = await apiList<{ id: number; app_label: string; model: string; label: string }>(
+        "/seo/content-types/",
+      );
+      const pageType =
+        types.find((t) => t.label === "cms.page" || (t.app_label === "cms" && t.model === "page")) ||
+        types.find((t) => t.model === "page") ||
+        types[0];
+      if (!pageType?.id) {
+        toast.error("Could not start tracking — no SEO content type available");
+        return;
+      }
+
+      const basePayload = {
+        content_type: pageType.id,
+        object_id: crypto.randomUUID?.() || `${Date.now()}`,
+        slug: slugFromPath(path),
+        meta_title: trackForm.title.trim() || path,
+        meta_description: trackForm.description.trim(),
+        meta_keywords: trackForm.keywords.trim(),
+        robots: trackForm.robots.trim() || "index,follow",
+        is_indexed: true,
+        structured_data: trackForm.ogImage.trim()
+          ? { og_image_url: trackForm.ogImage.trim() }
+          : undefined,
+      };
+      let result = await apiMutateDetailed<ApiSeoRow>("/seo/metadata/", "POST", {
+        ...basePayload,
+        canonical_url: path,
+      });
+      if (!result.data) {
+        result = await apiMutateDetailed<ApiSeoRow>("/seo/metadata/", "POST", {
+          ...basePayload,
+          canonical_url: toCanonicalUrl(trackForm.url, path),
+        });
+      }
+      if (!result.data) {
+        toast.error(result.error || "Could not start tracking this page");
+        return;
+      }
+      addSeoPage({
+        ...mapApiSeoRow(result.data),
+        path,
+        createdAt: result.data.created_at || new Date().toISOString(),
+      });
+      toast.success(`Started tracking ${path}`);
+      setTrackForm(emptyTrackForm);
+      setPage(1);
+    } finally {
+      setSavingTrack(false);
+    }
   };
 
   return (
     <>
       <PageHeader
         title="SEO Management"
-        subtitle="Titles, descriptions, canonical URLs, and social previews power the public site metadata, sitemap, and robots."
+        subtitle="Titles, descriptions, canonical URLs, and social previews power the public site metadata."
       />
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2">
         <StatCard label="Pages tracked" value={seoPages.length} icon={FileText} tone="primary" />
-        <StatCard label="Avg score" value={String(avgScore)} icon={Search} tone="success" />
-        <StatCard label="Social ready" value={seoPages.filter((p) => p.ogImage || p.description).length} icon={Share2} tone="highlight" />
-        <StatCard label="Sitemap" value="Live" icon={Globe} tone="info" />
+        <StatCard
+          label="Social ready"
+          value={seoPages.filter((p) => p.ogImage || p.description).length}
+          icon={Share2}
+          tone="highlight"
+        />
       </div>
 
       <Card className="mt-6 border-border/60">
         <CardContent className="p-5">
           <p className="mb-1 text-sm font-semibold">Pages</p>
           <p className="mb-3 text-xs text-muted-foreground">
-            Course SEO is also editable under Courses → Edit → SEO section. Paths like{" "}
-            <span className="font-mono">/courses/…</span> sync to the public site.
+            Newly tracked pages appear at the top. Course SEO is also editable under Courses → Edit → SEO.
           </p>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Path</TableHead>
                 <TableHead>Title</TableHead>
-                <TableHead>Score</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>
@@ -117,18 +231,14 @@ function SeoPageView() {
                   <TableCell className="font-mono text-xs">{p.path}</TableCell>
                   <TableCell className="text-sm">{p.title}</TableCell>
                   <TableCell>
-                    <Badge
-                      className={
-                        p.score >= 85
-                          ? "bg-success/15 text-success hover:bg-success/20"
-                          : "bg-highlight/20 text-[color:var(--highlight-foreground)]"
-                      }
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setEditing({ ...p });
+                        setEditingBaseline({ ...p });
+                      }}
                     >
-                      {p.score}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Button variant="outline" size="sm" onClick={() => { setEditing({ ...p }); setEditingBaseline({ ...p }); }}>
                       Edit
                     </Button>
                   </TableCell>
@@ -149,22 +259,34 @@ function SeoPageView() {
 
       <Card className="mt-6 border-border/60">
         <CardContent className="p-6">
-          <p className="mb-3 text-sm font-semibold">Homepage SEO</p>
+          <p className="mb-1 text-sm font-semibold">Track a page</p>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Add a valid page URL or path, then start tracking. The page is added to the top of the table.
+          </p>
           <div className="grid gap-4 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <Label>Page URL</Label>
+              <Input
+                className="mt-1.5"
+                value={trackForm.url}
+                onChange={(e) => setTrackForm({ ...trackForm, url: e.target.value })}
+                placeholder="/about or https://yoursite.com/about"
+              />
+            </div>
             <div>
               <Label>Meta title</Label>
               <Input
                 className="mt-1.5"
-                value={homeForm.title}
-                onChange={(e) => setHomeForm({ ...homeForm, title: e.target.value })}
+                value={trackForm.title}
+                onChange={(e) => setTrackForm({ ...trackForm, title: e.target.value })}
               />
             </div>
             <div>
-              <Label>Canonical URL</Label>
+              <Label>Keywords</Label>
               <Input
                 className="mt-1.5"
-                value={homeForm.canonical}
-                onChange={(e) => setHomeForm({ ...homeForm, canonical: e.target.value })}
+                value={trackForm.keywords}
+                onChange={(e) => setTrackForm({ ...trackForm, keywords: e.target.value })}
               />
             </div>
             <div className="md:col-span-2">
@@ -172,39 +294,35 @@ function SeoPageView() {
               <Textarea
                 className="mt-1.5"
                 rows={3}
-                value={homeForm.description}
-                onChange={(e) => setHomeForm({ ...homeForm, description: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>Keywords</Label>
-              <Input
-                className="mt-1.5"
-                value={homeForm.keywords}
-                onChange={(e) => setHomeForm({ ...homeForm, keywords: e.target.value })}
+                value={trackForm.description}
+                onChange={(e) => setTrackForm({ ...trackForm, description: e.target.value })}
               />
             </div>
             <div>
               <Label>OG image URL</Label>
               <Input
                 className="mt-1.5"
-                value={homeForm.ogImage}
-                onChange={(e) => setHomeForm({ ...homeForm, ogImage: e.target.value })}
+                value={trackForm.ogImage}
+                onChange={(e) => setTrackForm({ ...trackForm, ogImage: e.target.value })}
                 placeholder="https://… or /media/seo/og/…"
               />
             </div>
-            <div className="md:col-span-2">
+            <div>
               <Label>Robots</Label>
               <Input
                 className="mt-1.5"
-                value={homeForm.robots}
-                onChange={(e) => setHomeForm({ ...homeForm, robots: e.target.value })}
+                value={trackForm.robots}
+                onChange={(e) => setTrackForm({ ...trackForm, robots: e.target.value })}
                 placeholder="index,follow"
               />
             </div>
             <div className="md:col-span-2">
-              <Button className="btn-highlight" disabled={!homeDirty} onClick={saveHome}>
-                Save SEO settings
+              <Button
+                className="btn-highlight"
+                disabled={!trackDirty || savingTrack}
+                onClick={() => void startTracking()}
+              >
+                {savingTrack ? "Saving…" : "Start tracking"}
               </Button>
             </div>
           </div>

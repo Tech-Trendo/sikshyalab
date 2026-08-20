@@ -37,9 +37,12 @@ import { ProtectedIframe, ProtectedVideo } from "@/components/dashboard/ContentP
 import { contentApi } from "@/lib/content-api";
 import { toast } from "sonner";
 import { useDirtyForm } from "@/hooks/useDirtyForm";
+import { requirePermission } from "@/lib/permission-guards";
+import { usePermissions } from "@/hooks/usePermissions";
 import type { Course } from "@/lib/mock";
 
 export const Route = createFileRoute("/dashboard/course-content/$slug")({
+  beforeLoad: requirePermission("courses.view"),
   component: CourseContentPage,
 });
 
@@ -95,11 +98,26 @@ function PartContentPanel({ part }: { part: CoursePart }) {
 
 function CourseContentPage() {
   const { slug } = Route.useParams();
-  const { isAdmin, isTeacher, isStudent } = useAuth();
+  const { isAdmin } = useAuth();
   const { courses, updateCourseLocal } = useDashboardData();
   const navigate = useNavigate();
+  const { hasPermission, loading: permsLoading } = usePermissions();
 
-  const canEditContent = (isAdmin || isTeacher) && !isStudent;
+  const permReady = !permsLoading;
+  const canCreateContent =
+    permReady &&
+    (hasPermission("content.create") || hasPermission("content.manage_chapters"));
+  const canUpdateContent =
+    permReady &&
+    (hasPermission("content.update") || hasPermission("content.manage_chapters"));
+  const canDeleteContent = permReady && hasPermission("content.delete");
+  const canEditCourseMeta =
+    permReady &&
+    (hasPermission("courses.update") ||
+      hasPermission("courses.create") ||
+      hasPermission("courses.delete"));
+
+  const canViewMarketingTabs = isAdmin;
 
   const course = useMemo(() => courses.find((c: any) => c.slug === slug), [courses, slug]);
 
@@ -147,6 +165,10 @@ function CourseContentPage() {
   };
 
   const addChapter = async () => {
+    if (!canCreateContent) {
+      toast.error("You do not have permission to add chapters");
+      return;
+    }
     if (!chapterTitle.trim()) return;
     const title = chapterTitle.trim();
     if (!(course as any)._uuid) {
@@ -171,6 +193,10 @@ function CourseContentPage() {
   };
 
   const addPart = async () => {
+    if (!canCreateContent) {
+      toast.error("You do not have permission to add parts");
+      return;
+    }
     const chapterIdx = addPartChapterIdx;
     const title = addPartForm.title.trim();
     if (!title) {
@@ -229,6 +255,10 @@ function CourseContentPage() {
   };
 
   const saveEditChapter = async () => {
+    if (!canUpdateContent) {
+      toast.error("You do not have permission to edit chapters");
+      return;
+    }
     if (editChapterIdx < 0) return;
     const ch = course.chapters[editChapterIdx];
     const title = editChapterTitle.trim();
@@ -253,6 +283,10 @@ function CourseContentPage() {
   };
 
   const deleteChapter = async (idx: number) => {
+    if (!canDeleteContent) {
+      toast.error("You do not have permission to delete chapters");
+      return;
+    }
     const ch = course.chapters[idx];
     if (!ch?.id) {
       toast.error("Chapter is missing a backend id");
@@ -283,6 +317,10 @@ function CourseContentPage() {
   };
 
   const saveEditPart = async () => {
+    if (!canUpdateContent) {
+      toast.error("You do not have permission to edit parts");
+      return;
+    }
     if (editPartChapterIdx < 0 || editPartIdx < 0) return;
     const p = course.chapters[editPartChapterIdx]?.parts[editPartIdx];
     const title = editPartForm.title.trim();
@@ -324,6 +362,10 @@ function CourseContentPage() {
   };
 
   const deletePart = async (chapterIdx: number, partIdx: number) => {
+    if (!canDeleteContent) {
+      toast.error("You do not have permission to delete parts");
+      return;
+    }
     const p = course.chapters[chapterIdx]?.parts[partIdx];
     if (!p?.id) {
       toast.error("Part is missing a backend id");
@@ -353,6 +395,10 @@ function CourseContentPage() {
   };
 
   const addTopic = async () => {
+    if (!canCreateContent) {
+      toast.error("You do not have permission to add topics");
+      return;
+    }
     const title = addTopicTitle.trim();
     if (!title) {
       toast.error("Enter a topic title");
@@ -409,6 +455,10 @@ function CourseContentPage() {
   };
 
   const saveEditTopic = async () => {
+    if (!canUpdateContent) {
+      toast.error("You do not have permission to edit topics");
+      return;
+    }
     if (editTopicChapterIdx < 0 || editTopicPartIdx < 0 || editTopicIdx < 0) return;
     const topic =
       course.chapters[editTopicChapterIdx]?.parts[editTopicPartIdx]?.topics?.[editTopicIdx];
@@ -451,6 +501,10 @@ function CourseContentPage() {
   };
 
   const deleteTopic = async (chapterIdx: number, partIdx: number, topicIdx: number) => {
+    if (!canDeleteContent) {
+      toast.error("You do not have permission to delete topics");
+      return;
+    }
     const topic = course.chapters[chapterIdx]?.parts[partIdx]?.topics?.[topicIdx];
     if (!topic?.id) {
       toast.error("Topic is missing a backend id");
@@ -494,9 +548,13 @@ function CourseContentPage() {
       <Tabs defaultValue="curriculum" className="mt-4">
         <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="curriculum">Curriculum</TabsTrigger>
-          <TabsTrigger value="why">Why This Course</TabsTrigger>
-          <TabsTrigger value="classes">Upcoming Classes</TabsTrigger>
-          <TabsTrigger value="faqs">FAQs</TabsTrigger>
+          {canViewMarketingTabs && (
+            <>
+              <TabsTrigger value="why">Why This Course</TabsTrigger>
+              <TabsTrigger value="classes">Upcoming Classes</TabsTrigger>
+              <TabsTrigger value="faqs">FAQs</TabsTrigger>
+            </>
+          )}
         </TabsList>
 
         <TabsContent value="curriculum">
@@ -523,7 +581,7 @@ function CourseContentPage() {
                       <AccordionTrigger className="flex-1 text-left font-semibold hover:no-underline">
                         Chapter {i + 1} — {ch.title}
                       </AccordionTrigger>
-                      {canEditContent && (
+                      {canUpdateContent && (
                         <div className="flex shrink-0 gap-1 pr-1">
                           <Button
                             type="button"
@@ -535,16 +593,18 @@ function CourseContentPage() {
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 text-destructive"
-                            onClick={() => void deleteChapter(i)}
-                            disabled={contentBusy}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          {canDeleteContent ? (
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-destructive"
+                              onClick={() => void deleteChapter(i)}
+                              disabled={contentBusy}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          ) : null}
                         </div>
                       )}
                     </div>
@@ -563,7 +623,7 @@ function CourseContentPage() {
                                 >
                                   <span>{p.title}</span>
                                 </button>
-                                {canEditContent && (
+                                {canUpdateContent && (
                                   <div className="flex shrink-0 gap-0.5">
                                     <Button
                                       type="button"
@@ -575,16 +635,18 @@ function CourseContentPage() {
                                     >
                                       <Pencil className="h-3.5 w-3.5" />
                                     </Button>
-                                    <Button
-                                      type="button"
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-7 w-7 text-destructive"
-                                      onClick={() => void deletePart(i, j)}
-                                      disabled={contentBusy}
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </Button>
+                                    {canDeleteContent ? (
+                                      <Button
+                                        type="button"
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-7 w-7 text-destructive"
+                                        onClick={() => void deletePart(i, j)}
+                                        disabled={contentBusy}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    ) : null}
                                   </div>
                                 )}
                               </div>
@@ -601,7 +663,7 @@ function CourseContentPage() {
                                             <span className="min-w-0 flex-1 text-xs text-muted-foreground">
                                               • {t.title}
                                             </span>
-                                            {canEditContent && (
+                                            {canUpdateContent && (
                                               <div className="flex shrink-0 gap-0.5">
                                                 <Button
                                                   type="button"
@@ -613,16 +675,18 @@ function CourseContentPage() {
                                                 >
                                                   <Pencil className="h-3 w-3" />
                                                 </Button>
-                                                <Button
-                                                  type="button"
-                                                  size="icon"
-                                                  variant="ghost"
-                                                  className="h-6 w-6 text-destructive"
-                                                  onClick={() => void deleteTopic(i, j, k)}
-                                                  disabled={contentBusy}
-                                                >
-                                                  <Trash2 className="h-3 w-3" />
-                                                </Button>
+                                                {canDeleteContent ? (
+                                                  <Button
+                                                    type="button"
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    className="h-6 w-6 text-destructive"
+                                                    onClick={() => void deleteTopic(i, j, k)}
+                                                    disabled={contentBusy}
+                                                  >
+                                                    <Trash2 className="h-3 w-3" />
+                                                  </Button>
+                                                ) : null}
                                               </div>
                                             )}
                                           </li>
@@ -630,7 +694,7 @@ function CourseContentPage() {
                                       )
                                     )}
                                   </ul>
-                                  {canEditContent && (
+                                  {canCreateContent && (
                                     <div className="mt-1.5 pl-3">
                                       <Button
                                         size="sm"
@@ -649,7 +713,7 @@ function CourseContentPage() {
                           );
                         })}
                       </ul>
-                      {canEditContent && (
+                      {canCreateContent && (
                         <div className="mt-3">
                           <Button
                             size="sm"
@@ -669,7 +733,7 @@ function CourseContentPage() {
                   </AccordionItem>
                 ))}
               </Accordion>
-              {canEditContent && (
+              {canCreateContent && (
                 <div className="mt-4 flex gap-2">
                   <Input
                     placeholder="New chapter title"
@@ -690,38 +754,44 @@ function CourseContentPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="why">
-          <Card>
-            <CardContent className="pt-6">
-              <CourseWhyThisCoursePanel
-                courseSlug={course.slug}
-                canEdit={canEditContent}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {canViewMarketingTabs && (
+          <TabsContent value="why">
+            <Card>
+              <CardContent className="pt-6">
+                <CourseWhyThisCoursePanel
+                  courseSlug={course.slug}
+                  canEdit={canEditCourseMeta}
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
-        <TabsContent value="classes">
-          <Card>
-            <CardContent className="pt-6">
-              <CourseClassSchedulesPanel
-                courseUuid={(course as { _uuid?: string })._uuid || ""}
-                canEdit={canEditContent}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {canViewMarketingTabs && (
+          <TabsContent value="classes">
+            <Card>
+              <CardContent className="pt-6">
+                <CourseClassSchedulesPanel
+                  courseUuid={(course as { _uuid?: string })._uuid || ""}
+                  canEdit={canEditCourseMeta}
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
-        <TabsContent value="faqs">
-          <Card>
-            <CardContent className="pt-6">
-              <CourseFaqsPanel
-                courseUuid={(course as { _uuid?: string })._uuid || ""}
-                canEdit={canEditContent}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {canViewMarketingTabs && (
+          <TabsContent value="faqs">
+            <Card>
+              <CardContent className="pt-6">
+                <CourseFaqsPanel
+                  courseUuid={(course as { _uuid?: string })._uuid || ""}
+                  canEdit={canEditCourseMeta}
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
 
       <Dialog open={editChapterOpen} onOpenChange={setEditChapterOpen}>
