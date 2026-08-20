@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from apps.roles.views import (
     FeatureFlagViewSet,
     PermissionViewSet,
+    RolePermissionMatrixView,
     RoleViewSet,
     UserRoleViewSet,
 )
@@ -17,5 +18,10 @@ router.register(r"user-roles", UserRoleViewSet, basename="user-role")
 router.register(r"feature-flags", FeatureFlagViewSet, basename="feature-flag")
 
 urlpatterns = [
+    path(
+        "<str:role>/permissions/",
+        RolePermissionMatrixView.as_view(),
+        name="role-permission-matrix",
+    ),
     path("", include(router.urls)),
 ]

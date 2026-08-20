@@ -9,6 +9,7 @@ from apps.common.permissions import (
     ROLE_TEACHER,
     user_has_role,
 )
+from apps.common.rbac import user_has_rbac_permission, resolve_permission_codename
 
 
 class IsAdminOrTeacherAnalytics(BasePermission):
@@ -17,7 +18,13 @@ class IsAdminOrTeacherAnalytics(BasePermission):
     message = "Admin or teacher privileges required for analytics."
 
     def has_permission(self, request, view):
-        return user_has_role(request.user, ROLE_ADMIN, ROLE_STAFF, ROLE_TEACHER)
+        user = request.user
+        if user_has_role(user, ROLE_ADMIN, ROLE_STAFF):
+            return True
+        if user_has_role(user, ROLE_TEACHER):
+            required = "analytics.view_dashboard" if getattr(view, "action", None) == "dashboard" else "analytics.view"
+            return user_has_rbac_permission(user, required)
+        return False
 
 
 class IsDashboardUser(BasePermission):
@@ -26,9 +33,12 @@ class IsDashboardUser(BasePermission):
     message = "Authentication with a dashboard role is required."
 
     def has_permission(self, request, view):
-        return user_has_role(
-            request.user, ROLE_ADMIN, ROLE_STAFF, ROLE_TEACHER, ROLE_STUDENT
-        )
+        user = request.user
+        if user_has_role(user, ROLE_ADMIN, ROLE_STAFF):
+            return True
+        if user_has_role(user, ROLE_TEACHER):
+            return user_has_rbac_permission(user, "analytics.view")
+        return user_has_role(user, ROLE_STUDENT)
 
 
 class IsAdminAnalytics(BasePermission):
@@ -46,7 +56,10 @@ class IsTeacherDashboard(BasePermission):
     message = "Teacher privileges required."
 
     def has_permission(self, request, view):
-        return user_has_role(request.user, ROLE_TEACHER)
+        user = request.user
+        return user_has_role(user, ROLE_TEACHER) and user_has_rbac_permission(
+            user, "analytics.view_dashboard"
+        )
 
 
 class IsStudentDashboard(BasePermission):

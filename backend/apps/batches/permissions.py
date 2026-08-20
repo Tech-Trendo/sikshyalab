@@ -11,6 +11,7 @@ from apps.common.permissions import (
     ROLE_TEACHER,
     user_has_role,
 )
+from apps.common.rbac import resolve_permission_codename, user_has_rbac_permission
 
 
 def _get_student(user):
@@ -34,7 +35,13 @@ class BatchAccessPermission(BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
         if request.method in SAFE_METHODS:
+            if user_has_role(request.user, ROLE_TEACHER):
+                return user_has_rbac_permission(
+                    request.user,
+                    resolve_permission_codename(module="batches", view=view, request=request),
+                )
             return True
+
         return user_has_role(request.user, ROLE_ADMIN, ROLE_STAFF, ROLE_TEACHER)
 
     def has_object_permission(self, request, view, obj):

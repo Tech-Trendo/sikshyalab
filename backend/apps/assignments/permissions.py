@@ -9,6 +9,7 @@ from apps.common.permissions import (
     ROLE_TEACHER,
     user_has_role,
 )
+from apps.common.rbac import resolve_permission_codename, user_has_rbac_permission
 
 
 def get_student_for_user(user):
@@ -111,7 +112,26 @@ class IsAssignmentAdminOrTeacher(BasePermission):
     message = "Teacher or admin privileges required."
 
     def has_permission(self, request, view):
-        return user_has_role(request.user, ROLE_ADMIN, ROLE_STAFF, ROLE_TEACHER)
+        user = request.user
+        if user_has_role(user, ROLE_ADMIN, ROLE_STAFF):
+            return True
+        if not user_has_role(user, ROLE_TEACHER):
+            return False
+
+        action_overrides = {
+            "grade": "assignments.grade",
+            "download": "assignments.download",
+            # publish/close are status transitions; treat as assignment update
+            "publish": "assignments.update",
+            "close": "assignments.update",
+        }
+        required = resolve_permission_codename(
+            module="assignments",
+            view=view,
+            request=request,
+            action_overrides=action_overrides,
+        )
+        return user_has_rbac_permission(user, required)
 
 
 class IsAssignmentParticipant(BasePermission):
@@ -124,11 +144,26 @@ class IsAssignmentParticipant(BasePermission):
     message = "You do not have access to this assignment resource."
 
     def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
+        user = request.user
+        if not user or not user.is_authenticated:
             return False
-        if user_has_role(request.user, ROLE_ADMIN, ROLE_STAFF, ROLE_TEACHER):
+        if user_has_role(user, ROLE_ADMIN, ROLE_STAFF):
             return True
-        if user_has_role(request.user, ROLE_STUDENT):
+
+        if user_has_role(user, ROLE_TEACHER):
+            action_overrides = {
+                "grade": "assignments.grade",
+                "download": "assignments.download",
+            }
+            required = resolve_permission_codename(
+                module="assignments",
+                view=view,
+                request=request,
+                action_overrides=action_overrides,
+            )
+            return user_has_rbac_permission(user, required)
+
+        if user_has_role(user, ROLE_STUDENT):
             write_actions = {"create", "update", "partial_update", "destroy"}
             if getattr(view, "action", None) in write_actions and view.__class__.__name__ not in (
                 "SubmissionViewSet",

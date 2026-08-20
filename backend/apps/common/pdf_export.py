@@ -30,7 +30,11 @@ def _escape(text: str) -> str:
 
 def _truncate(text: str, max_len: int) -> str:
     text = str(text or "")
-    return text if len(text) <= max_len else f"{text[: max_len - 1]}…"
+    if len(text) <= max_len:
+        return text
+    if max_len <= 3:
+        return text[:max_len]
+    return f"{text[: max_len - 3]}..."
 
 
 def _set_fill(stream: list[str], color: tuple[float, float, float]) -> None:
@@ -61,11 +65,79 @@ def _draw_text(
 ) -> None:
     font = "/F2" if bold else "/F1"
     label = _escape(_truncate(text, max_width))
-    if color:
-        _set_fill(stream, color)
+    _set_fill(stream, color if color is not None else BRAND_TEXT)
     stream.extend(["BT", f"{font} {size} Tf", f"{x} {y} Td", f"({label}) Tj", "ET"])
-    if color:
-        _set_fill(stream, BRAND_TEXT)
+    _set_fill(stream, BRAND_TEXT)
+
+
+def _assemble_pdf(page_streams: list[str], page_w: int = 612, page_h: int = 792) -> bytes:
+    """
+    Build a PDF with sequentially numbered objects (required for valid xref).
+
+    Layout: 1 Catalog, 2 Pages, 3 Font regular, 4 Font bold,
+    then page/content pairs from 5 upward.
+    """
+    font_regular = 3
+    font_bold = 4
+    content_start = 5
+
+    parts: list[tuple[int, str]] = []
+    parts.append((1, "1 0 obj<< /Type /Catalog /Pages 2 0 R >>endobj\n"))
+
+    kids = " ".join(f"{content_start + i * 2} 0 R" for i in range(len(page_streams)))
+    parts.append(
+        (2, f"2 0 obj<< /Type /Pages /Kids [{kids}] /Count {len(page_streams)} >>endobj\n")
+    )
+    parts.append(
+        (
+            font_regular,
+            f"{font_regular} 0 obj<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>endobj\n",
+        )
+    )
+    parts.append(
+        (
+            font_bold,
+            f"{font_bold} 0 obj<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>endobj\n",
+        )
+    )
+
+    for i, page_stream in enumerate(page_streams):
+        page_num = content_start + i * 2
+        content_num = page_num + 1
+        parts.append(
+            (
+                page_num,
+                f"{page_num} 0 obj<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {page_w} {page_h}] "
+                f"/Contents {content_num} 0 R /Resources << /Font << /F1 {font_regular} 0 R "
+                f"/F2 {font_bold} 0 R >> >> >>endobj\n",
+            )
+        )
+        encoded = page_stream.encode("latin-1", errors="replace")
+        parts.append(
+            (
+                content_num,
+                f"{content_num} 0 obj<< /Length {len(encoded)} >>stream\n"
+                f"{page_stream}\nendstream\nendobj\n",
+            )
+        )
+
+    max_obj = max(num for num, _ in parts)
+    pdf = bytearray(b"%PDF-1.4\n")
+    offsets = [0] * (max_obj + 1)
+    for obj_num, body in sorted(parts, key=lambda item: item[0]):
+        offsets[obj_num] = len(pdf)
+        pdf.extend(body.encode("latin-1", errors="replace"))
+
+    xref_pos = len(pdf)
+    pdf.extend(f"xref\n0 {max_obj + 1}\n".encode("ascii"))
+    pdf.extend(b"0000000000 65535 f \n")
+    for i in range(1, max_obj + 1):
+        pdf.extend(f"{offsets[i]:010d} 00000 n \n".encode("ascii"))
+    pdf.extend(
+        f"trailer<< /Size {max_obj + 1} /Root 1 0 R >>\n"
+        f"startxref\n{xref_pos}\n%%EOF".encode("ascii")
+    )
+    return bytes(pdf)
 
 
 def _draw_brand_header(
@@ -109,84 +181,41 @@ def _draw_brand_footer(
     _draw_text(stream, page_w - 40, 10, "ShikshaLab Verified", 7, color=BRAND_ACCENT)
 
 
-def _assemble_pdf(page_streams: list[str], page_w: int = 612, page_h: int = 792) -> bytes:
-    content_start = 4
-    font_regular = content_start + len(page_streams) * 2
-    font_bold = font_regular + 1
-
-    objects: list[str] = []
-    page_obj_nums: list[int] = []
-
-    objects.append("1 0 obj<< /Type /Catalog /Pages 2 0 R >>endobj\n")
-    kids = []
-    for i in range(len(page_streams)):
-        page_num = content_start + i * 2
-        page_obj_nums.append(page_num)
-        kids.append(f"{page_num} 0 R")
-    objects.append(
-        f"2 0 obj<< /Type /Pages /Kids [{' '.join(kids)}] /Count {len(page_streams)} >>endobj\n"
-    )
-    objects.append(
-        f"{font_regular} 0 obj<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>endobj\n"
-    )
-    objects.append(
-        f"{font_bold} 0 obj<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>endobj\n"
-    )
-
-    for i, page_stream in enumerate(page_streams):
-        page_num = content_start + i * 2
-        content_num = page_num + 1
-        objects.append(
-            f"{page_num} 0 obj<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {page_w} {page_h}] "
-            f"/Contents {content_num} 0 R /Resources << /Font << /F1 {font_regular} 0 R /F2 {font_bold} 0 R >> >> >>endobj\n"
-        )
-        objects.append(
-            f"{content_num} 0 obj<< /Length {len(page_stream.encode('latin-1', errors='replace'))} >>stream\n"
-            f"{page_stream}\nendstream\nendobj\n"
-        )
-
-    pdf = bytearray(b"%PDF-1.4\n")
-    offsets = [0]
-    for obj in objects:
-        offsets.append(len(pdf))
-        pdf.extend(obj.encode("latin-1", errors="replace"))
-
-    xref_pos = len(pdf)
-    pdf.extend(f"xref\n0 {len(objects) + 1}\n".encode("ascii"))
-    pdf.extend(b"0000000000 65535 f \n")
-    for off in offsets[1:]:
-        pdf.extend(f"{off:010d} 00000 n \n".encode("ascii"))
-    pdf.extend(
-        f"trailer<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
-        f"startxref\n{xref_pos}\n%%EOF".encode("ascii")
-    )
-    return bytes(pdf)
-
-
 def build_table_pdf(
     title: str,
     headers: Sequence[str],
     rows: Sequence[Sequence[Any]],
     *,
     subtitle: str | None = None,
+    empty_message: str | None = None,
 ) -> bytes:
     """Build a branded ShikshaLab report PDF with header, table, and footer."""
     page_w = 612
     page_h = 792
     rows_per_page = 22
-    row_list = list(rows)
+    header_labels = [str(h) for h in headers]
+    row_list = [list(row) for row in rows]
+
     if not row_list:
-        row_list = [[]]
+        if empty_message:
+            header_labels = header_labels or ["Message"]
+            row_list = [[empty_message]]
+        else:
+            row_list = [[]]
+
     page_chunks = [
         row_list[i : i + rows_per_page] for i in range(0, len(row_list), rows_per_page)
     ]
     total_pages = len(page_chunks)
-    col_count = max(len(headers), 1)
+    col_count = max(len(header_labels), 1)
     table_w = page_w - 80
     col_w = table_w / col_count
     header_h = 22
     row_h = 18
     generated = subtitle or f"Generated {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+
+    def _cell_max_chars() -> int:
+        return max(8, int(col_w / 4.5))
 
     page_streams: list[str] = []
     for page_index, page_rows in enumerate(page_chunks):
@@ -200,7 +229,7 @@ def build_table_pdf(
         y = page_h - 110
         _set_fill(stream, BRAND_PRIMARY)
         _draw_rect(stream, 40, y - header_h, table_w, header_h)
-        for i, header in enumerate(headers):
+        for i, header in enumerate(header_labels):
             _draw_text(
                 stream,
                 46 + i * col_w,
@@ -209,7 +238,7 @@ def build_table_pdf(
                 9,
                 bold=True,
                 color=BRAND_WHITE,
-                max_width=int(col_w / 5),
+                max_width=_cell_max_chars(),
             )
         y -= header_h
 
@@ -220,18 +249,28 @@ def build_table_pdf(
             _set_stroke(stream, BRAND_BORDER)
             stream.append("0.25 w")
             _draw_rect(stream, 40, y - row_h, table_w, row_h, fill=False)
-            for i, cell in enumerate(row):
+            if empty_message and len(row) == 1:
                 _draw_text(
                     stream,
-                    46 + i * col_w,
+                    46,
                     y - 13,
-                    str(cell if cell is not None else ""),
-                    8,
-                    max_width=int(col_w / 5),
+                    str(row[0] if row[0] is not None else ""),
+                    9,
+                    max_width=max(40, int(table_w / 5)),
                 )
+            else:
+                for i, cell in enumerate(row):
+                    _draw_text(
+                        stream,
+                        46 + i * col_w,
+                        y - 13,
+                        str(cell if cell is not None else ""),
+                        8,
+                        max_width=_cell_max_chars(),
+                    )
             y -= row_h
 
-        if page_index == total_pages - 1:
+        if page_index == total_pages - 1 and not empty_message:
             _draw_text(
                 stream,
                 40,

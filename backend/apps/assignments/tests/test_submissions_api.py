@@ -194,6 +194,30 @@ class AssignmentSubmissionFileTests(TestCase):
         anon_denied = anon.get(media_path)
         self.assertEqual(anon_denied.status_code, 403)
 
+    def test_submission_download_endpoint(self):
+        created = _payload(self._submit(self.student_user, attachment=_pdf("report.pdf")))
+        sub_id = created["id"]
+
+        res = self.client.get(f"/api/v1/assignments/submissions/{sub_id}/download/")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("attachment", res["Content-Disposition"])
+        body = b"".join(res.streaming_content)
+        self.assertTrue(body.startswith(b"%PDF"))
+
+        self._auth(self.teacher_user)
+        teacher_res = self.client.get(f"/api/v1/assignments/submissions/{sub_id}/download/")
+        self.assertEqual(teacher_res.status_code, 200)
+
+        self._auth(self.other_user)
+        denied = self.client.get(f"/api/v1/assignments/submissions/{sub_id}/download/")
+        self.assertEqual(denied.status_code, 404)
+
+    def test_submission_download_without_file_returns_404(self):
+        res = self._submit(self.student_user, content="Text only")
+        sub_id = _payload(res)["id"]
+        download = self.client.get(f"/api/v1/assignments/submissions/{sub_id}/download/")
+        self.assertEqual(download.status_code, 404)
+
     def test_resubmit_returns_latest_file(self):
         first = _payload(
             self._submit(

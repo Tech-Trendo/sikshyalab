@@ -5,6 +5,7 @@ Role-based permissions for the students app.
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 from apps.common.permissions import user_has_role, ROLE_ADMIN, ROLE_STAFF, ROLE_TEACHER, ROLE_STUDENT
+from apps.common.rbac import resolve_permission_codename, user_has_rbac_permission
 
 
 class IsAdminOrTeacherReadStudentWriteOwn(BasePermission):
@@ -23,10 +24,10 @@ class IsAdminOrTeacherReadStudentWriteOwn(BasePermission):
         if user_has_role(user, ROLE_ADMIN, ROLE_STAFF):
             return True
         if user_has_role(user, ROLE_TEACHER):
-            return request.method in SAFE_METHODS or view.action in (
-                "list",
-                "retrieve",
-            )
+            if request.method not in SAFE_METHODS:
+                return False
+            required = resolve_permission_codename(module="students", view=view, request=request)
+            return user_has_rbac_permission(user, required)
         if user_has_role(user, ROLE_STUDENT):
             return view.action in ("list", "retrieve", "partial_update", "update", "me")
         return False

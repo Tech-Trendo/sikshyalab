@@ -11,6 +11,7 @@ from apps.common.permissions import (
     ROLE_TEACHER,
     user_has_role,
 )
+from apps.common.rbac import resolve_permission_codename, user_has_rbac_permission
 
 
 def _get_student(user):
@@ -34,6 +35,9 @@ class EnrollmentPermission(BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
         if request.method in SAFE_METHODS:
+            if user_has_role(request.user, ROLE_TEACHER):
+                required = resolve_permission_codename(module="enrollments", view=view, request=request)
+                return user_has_rbac_permission(request.user, required)
             return True
         if view.action in ("approve", "reject", "cancel", "complete"):
             # cancel allowed for student (own) + admin; approve/reject/complete admin
