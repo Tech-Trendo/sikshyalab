@@ -5,7 +5,7 @@
 
 import { normalizeApiRole } from "@/lib/auth-routes";
 import { apiBase } from "@/lib/env";
-import { ApiError } from "@/lib/http-client";
+import { ApiError, type ApiEnvelope } from "@/lib/http-client";
 import {
   DEACTIVATED_ACCOUNT_MESSAGE,
   handleDeactivatedHttpResponse,
@@ -149,18 +149,47 @@ export async function createLoginHandoff(): Promise<string | null> {
   }
 }
 
-async function parseJson(res: Response): Promise<any> {
+async function parseJson(res: Response): Promise<ApiResponseBody | null> {
   try {
-    return await res.json();
+    const data: unknown = await res.json();
+    if (data !== null && typeof data === "object" && !Array.isArray(data)) {
+      return data as ApiResponseBody;
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-function unwrapData<T>(body: any): T | null {
-  if (!body || typeof body !== "object") return null;
-  if ("data" in body && body.data !== undefined) return body.data as T;
-  return body as T;
+/** Loose JSON body from Django-style API envelopes. */
+type ApiResponseBody = {
+  data?: unknown;
+  detail?: string;
+  message?: string;
+  errors?: ApiEnvelope<unknown>["errors"];
+  request_id?: string;
+  expires_in_seconds?: number;
+  channel?: string;
+  reset_token?: string;
+  code?: string;
+  access?: string;
+  refresh?: string;
+  thumbnail?: string;
+  thumbnail_url?: string;
+  old_password?: string[];
+  new_password?: string[];
+  new_password_confirm?: string[];
+  results?: unknown;
+  status?: string;
+  user?: unknown;
+  tokens?: unknown;
+  must_change_password?: boolean;
+};
+
+function unwrapData<T>(body: ApiResponseBody | null | undefined): T | null {
+  if (!body) return null;
+  if (body.data !== undefined) return body.data as T;
+  return body as unknown as T;
 }
 
 export type ApiUser = {
@@ -439,7 +468,7 @@ export async function apiChangePassword(data: {
   return { ok: true, detail: body?.detail };
 }
 
-export async function apiRegister(_data: {
+export async function apiRegister(data: {
   email: string;
   password: string;
   password_confirm: string;
@@ -448,6 +477,7 @@ export async function apiRegister(_data: {
   phone?: string;
   role?: "STUDENT" | "TEACHER";
 }): Promise<{ user: ApiUser; tokens: { access: string; refresh: string } } | null> {
+  void data;
   // Public registration is disabled on the API.
   return null;
 }
@@ -527,9 +557,9 @@ export async function fetchNotifications(): Promise<ApiNotification[] | null> {
   const res = await apiFetch("/notifications/");
   if (!res || !res.ok) return null;
   const body = await parseJson(res);
-  const data = unwrapData<any>(body);
-  if (Array.isArray(data)) return data as ApiNotification[];
-  if (data && Array.isArray(data.results)) return data.results as ApiNotification[];
+  const data = unwrapData<ApiNotification[] | { results?: ApiNotification[] }>(body);
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.results)) return data.results;
   return null;
 }
 
@@ -561,7 +591,8 @@ export async function uploadCourseThumbnail(slug: string, file: File): Promise<s
     });
     if (!res.ok) return null;
     const body = await parseJson(res);
-    const data = unwrapData<any>(body) ?? body;
+    const data =
+      unwrapData<{ thumbnail?: string; thumbnail_url?: string }>(body) ?? body;
     return data?.thumbnail || data?.thumbnail_url || null;
   } catch {
     return null;
@@ -615,8 +646,9 @@ export function mapApiUserToAuth(
 
 /** Resolve student_id / teacher name from profile endpoints after login. */
 export async function fetchRoleProfileIds(
-  _role: "admin" | "teacher" | "student",
+  role: "admin" | "teacher" | "student",
 ): Promise<{ studentId?: string; teacherName?: string } | undefined> {
+  void role;
   // Full profile resolution lives in the dashboard app; web login only needs JWT handoff.
   return undefined;
 }

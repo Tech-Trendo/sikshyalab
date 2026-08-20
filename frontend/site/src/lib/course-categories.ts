@@ -1,5 +1,3 @@
-import type { Course } from "@/lib/mock";
-
 /** Category names on a course (supports multi-category). */
 export function courseCategoryNames(course: {
   category?: string;

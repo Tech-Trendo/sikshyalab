@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   apiLogin,
   apiLogout,
@@ -116,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   };
 
-  const refreshFromApi = async () => {
+  const refreshFromApi = useCallback(async () => {
     // Skip /profile/ when there is no usable JWT (avoids noisy 401s)
     const token = await ensureAccessToken();
     if (!token) return;
@@ -136,12 +136,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const profileIds = await fetchRoleProfileIds(base.role);
     persist({ ...mapApiUserToAuth(apiUser, profileIds), backend: true });
     emitAuthChanged();
-  };
+  }, []);
 
   useEffect(() => {
     void refreshFromApi();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshFromApi]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -215,7 +214,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       refreshFromApi,
     }),
-    [user],
+    [user, refreshFromApi],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

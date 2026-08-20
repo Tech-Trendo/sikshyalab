@@ -16,7 +16,8 @@ export const SHIKSHALAB_CERTIFICATE_LOGO = "/images/certificates/shikshalab-cert
 export const CERTIFICATE_REFERENCE_IMAGE = "/images/certificates/internship-reference.png?v=4";
 
 /** Certificates always use the given Shiksha Lab logo — never other logos. */
-export function resolveCertificateLogoUrl(_logoUrl?: string | null): string {
+export function resolveCertificateLogoUrl(logoUrl?: string | null): string {
+  void logoUrl;
   return SHIKSHALAB_CERTIFICATE_LOGO;
 }
 

@@ -23,25 +23,23 @@ export default function Page() {
   const title = contactPage?.title || "Get In Touch";
   const subtitle =
     contactPage?.content || "Reach out and we'll respond within 24 hours.";
-  const socialLinks = settings?.social_links ?? {};
-  const socials = useMemo(
-    () =>
-      (
-        [
-          { key: "facebook", label: "Facebook", Icon: Facebook },
-          { key: "twitter", label: "Twitter", Icon: Twitter },
-          { key: "linkedin", label: "LinkedIn", Icon: Linkedin },
-          { key: "youtube", label: "YouTube", Icon: Youtube },
-          { key: "instagram", label: "Instagram", Icon: Instagram },
-        ] as const
-      )
-        .map((s) => ({
-          ...s,
-          href: (socialLinks[s.key] || socialLinks[s.label] || "").trim(),
-        }))
-        .filter((s) => s.href && s.href !== "#"),
-    [socialLinks],
-  );
+  const socials = useMemo(() => {
+    const socialLinks = settings?.social_links ?? {};
+    return (
+      [
+        { key: "facebook", label: "Facebook", Icon: Facebook },
+        { key: "twitter", label: "Twitter", Icon: Twitter },
+        { key: "linkedin", label: "LinkedIn", Icon: Linkedin },
+        { key: "youtube", label: "YouTube", Icon: Youtube },
+        { key: "instagram", label: "Instagram", Icon: Instagram },
+      ] as const
+    )
+      .map((s) => ({
+        ...s,
+        href: (socialLinks[s.key] || socialLinks[s.label] || "").trim(),
+      }))
+      .filter((s) => s.href && s.href !== "#");
+  }, [settings?.social_links]);
 
   return (
     <SiteLayout flushTop>
@@ -150,21 +148,6 @@ export default function Page() {
             </RingDotDecor>
           </div>
         </div>
-
-        {/*
-          Debug: confirm the raw coordinate values coming from `usePublicData()`
-          right before they are passed into `ContactMap`.
-        */}
-        {(() => {
-          // eslint-disable-next-line no-console
-          console.log("[ContactMap] raw coords", {
-            latitude: contact.latitude,
-            longitude: contact.longitude,
-            latitudeType: typeof contact.latitude,
-            longitudeType: typeof contact.longitude,
-          });
-          return null;
-        })()}
 
         <ContactMap
           latitude={contact.latitude}

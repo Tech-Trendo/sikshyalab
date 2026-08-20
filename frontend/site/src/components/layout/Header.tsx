@@ -38,20 +38,17 @@ const NAV_LINK =
 /** Top utility strip — same contact + socials as Contact page / site settings. */
 function SiteContactBar() {
   const { contact, settings } = usePublicData();
-  const socialLinks = settings?.social_links ?? {};
-
-  const socials = useMemo(
-    () =>
-      SOCIAL_NETWORKS.map(({ key, label, Icon }) => {
-        const href =
-          socialLinks[key] ||
-          socialLinks[label] ||
-          socialLinks[label.toLowerCase()] ||
-          "";
-        return { key, label, Icon, href: href.trim() };
-      }).filter((s) => s.href && s.href !== "#"),
-    [socialLinks],
-  );
+  const socials = useMemo(() => {
+    const socialLinks = settings?.social_links ?? {};
+    return SOCIAL_NETWORKS.map(({ key, label, Icon }) => {
+      const href =
+        socialLinks[key] ||
+        socialLinks[label] ||
+        socialLinks[label.toLowerCase()] ||
+        "";
+      return { key, label, Icon, href: href.trim() };
+    }).filter((s) => s.href && s.href !== "#");
+  }, [settings?.social_links]);
 
   const phone = contact.phone?.trim();
   const email = contact.email?.trim();
