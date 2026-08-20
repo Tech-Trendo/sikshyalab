@@ -5,6 +5,7 @@ App-level permissions for course content.
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 from apps.common.permissions import user_has_role, ROLE_ADMIN, ROLE_STAFF, ROLE_TEACHER, ROLE_STUDENT
+from apps.common.rbac import resolve_permission_codename, user_has_rbac_permission
 
 
 def _get_student_profile(user):
@@ -50,8 +51,19 @@ class IsAdminOrTeacherContentManager(BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
         if request.method in SAFE_METHODS:
+            if user_has_role(request.user, ROLE_TEACHER):
+                required = resolve_permission_codename(module="content", view=view, request=request)
+                return user_has_rbac_permission(request.user, required)
             return True
-        return user_has_role(request.user, ROLE_ADMIN, ROLE_STAFF, ROLE_TEACHER)
+
+        if user_has_role(request.user, ROLE_ADMIN, ROLE_STAFF):
+            return True
+
+        if not user_has_role(request.user, ROLE_TEACHER):
+            return False
+
+        required = resolve_permission_codename(module="content", view=view, request=request)
+        return user_has_rbac_permission(request.user, required)
 
     def has_object_permission(self, request, view, obj):
         if user_has_role(request.user, ROLE_ADMIN, ROLE_STAFF):

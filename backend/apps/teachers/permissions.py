@@ -10,6 +10,7 @@ from apps.common.permissions import (
     ROLE_TEACHER,
     user_has_role,
 )
+from apps.common.rbac import resolve_permission_codename, user_has_rbac_permission
 
 
 class IsAdminOrTeacherOwn(BasePermission):
@@ -28,7 +29,12 @@ class IsAdminOrTeacherOwn(BasePermission):
         if user_has_role(user, ROLE_ADMIN, ROLE_STAFF):
             return True
         if user_has_role(user, ROLE_TEACHER):
-            return True
+            required = resolve_permission_codename(
+                module="teachers",
+                view=view,
+                request=request,
+            )
+            return user_has_rbac_permission(user, required)
         return request.method in SAFE_METHODS
 
     def has_object_permission(self, request, view, obj):
@@ -60,6 +66,13 @@ class IsAdminOrTeacherOwnRelated(BasePermission):
             return False
         if user_has_role(user, ROLE_ADMIN, ROLE_STAFF, ROLE_TEACHER):
             return True
+        if user_has_role(user, ROLE_TEACHER):
+            required = resolve_permission_codename(
+                module="teachers",
+                view=view,
+                request=request,
+            )
+            return user_has_rbac_permission(user, required)
         return request.method in SAFE_METHODS
 
     def has_object_permission(self, request, view, obj):

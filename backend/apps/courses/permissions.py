@@ -10,6 +10,7 @@ from apps.common.permissions import (
     ROLE_TEACHER,
     user_has_role,
 )
+from apps.common.rbac import resolve_permission_codename, user_has_rbac_permission
 
 
 class IsAdminOrReadOnlyCourse(BasePermission):
@@ -23,6 +24,11 @@ class IsAdminOrReadOnlyCourse(BasePermission):
 
     def has_permission(self, request, view):
         if request.method in SAFE_METHODS:
+            user = request.user
+            if user_has_role(user, ROLE_TEACHER):
+                return user_has_rbac_permission(
+                    user, resolve_permission_codename(module="courses", view=view, request=request)
+                )
             return True
         user = request.user
         if not user or not user.is_authenticated:
@@ -31,7 +37,14 @@ class IsAdminOrReadOnlyCourse(BasePermission):
             return True
         if user_has_role(user, ROLE_TEACHER):
             # Teachers may update assigned courses; create reserved for admin
-            return view.action in ("update", "partial_update")
+            if view.action not in ("update", "partial_update"):
+                return False
+            required = resolve_permission_codename(
+                module="courses",
+                view=view,
+                request=request,
+            )
+            return user_has_rbac_permission(user, required)
         return False
 
     def has_object_permission(self, request, view, obj):

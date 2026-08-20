@@ -34,6 +34,7 @@ from apps.assignments.serializers import (
     determine_submission_status,
     next_attempt_number,
 )
+from apps.common.media_access import build_media_attachment_response
 from apps.common.permissions import ROLE_ADMIN, ROLE_STAFF, ROLE_STUDENT, user_has_role
 from apps.common.responses import created_response, error_response, success_response
 
@@ -330,6 +331,23 @@ class SubmissionViewSet(viewsets.ModelViewSet):
         if latest is None:
             return success_response(data=None, message="No submission found.")
         return success_response(data=self.get_serializer(latest).data)
+
+    @action(detail=True, methods=["get"], url_path="download")
+    def download(self, request, pk=None):
+        """
+        GET /api/v1/assignments/submissions/<id>/download/
+
+        Download the submission attachment (JWT/session auth).
+        Uses queryset scoping: other users' submissions return 404, not 403.
+        """
+        submission = self.get_object()
+        attachment_name = submission.attachment.name if submission.attachment else ""
+        if not attachment_name:
+            return error_response(
+                message="This submission has no attached file.",
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        return build_media_attachment_response(attachment_name)
 
     def get_permissions(self):
         if self.action in ("update", "partial_update", "destroy"):

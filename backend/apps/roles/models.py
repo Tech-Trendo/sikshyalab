@@ -114,3 +114,42 @@ class FeatureFlag(models.Model):
         if not user or not user.is_authenticated:
             return False
         return self.roles.filter(user_roles__user=user, is_active=True).exists()
+
+
+class UserPermissionOverride(models.Model):
+    """
+    Per-user overrides on top of Role defaults.
+
+    Nullable booleans allow distinguishing:
+      - null: no override → inherit from role
+      - true/false: explicit override for that permission
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="permission_overrides",
+    )
+    module = models.CharField(max_length=100, db_index=True)
+
+    can_view = models.BooleanField(null=True, blank=True)
+    can_create = models.BooleanField(null=True, blank=True)
+    can_edit = models.BooleanField(null=True, blank=True)
+    can_delete = models.BooleanField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["module", "-updated_at"]
+        verbose_name = _("user permission override")
+        verbose_name_plural = _("user permission overrides")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "module"],
+                name="unique_user_permission_override",
+            )
+        ]
+
+    def __str__(self):
+        return f"Override({self.user_id}, {self.module})"

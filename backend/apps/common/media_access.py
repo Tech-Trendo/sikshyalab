@@ -235,6 +235,17 @@ def _serve_from_disk(relpath: str):
     return response
 
 
+def build_media_attachment_response(relpath: str):
+    """Stream a media file with ``Content-Disposition: attachment`` (forced download)."""
+    relpath = normalize_media_relpath(relpath)
+    if getattr(settings, "USE_S3", False):
+        response = _serve_from_storage(relpath)
+    else:
+        response = _serve_from_disk(relpath)
+    response["Content-Disposition"] = f'attachment; filename="{os.path.basename(relpath)}"'
+    return response
+
+
 def debug_media_serve(request, path, document_root=None):
     """DEBUG media route — always auth-gated (never serve private files anonymously)."""
     return AuthenticatedMediaView.as_view()(request, path=path)
