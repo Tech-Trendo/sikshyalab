@@ -2,16 +2,19 @@ import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/dashboard/RichTextEditor";
 
 export type BlogSectionDraft = {
   id?: string;
   title: string;
   description: string;
+  image?: string;
+  imageFile?: File;
+  clearImage?: boolean;
 };
 
 export function emptyBlogSection(): BlogSectionDraft {
-  return { title: "", description: "" };
+  return { title: "", description: "", image: "" };
 }
 
 export function BlogSectionsEditor({
@@ -106,16 +109,15 @@ export function BlogSectionsEditor({
             </div>
             <div>
               <Label htmlFor={`section-desc-${i}`}>Description</Label>
-              <Textarea
-                id={`section-desc-${i}`}
-                className="mt-1.5 min-h-[120px]"
-                rows={5}
-                required
-                value={section.description}
-                disabled={disabled}
-                placeholder="Section body (required)"
-                onChange={(e) => update(i, { description: e.target.value })}
-              />
+              <div className="mt-1.5">
+                <RichTextEditor
+                  id={`section-desc-${i}`}
+                  value={section.description}
+                  disabled={disabled}
+                  placeholder="Section body (required)"
+                  onChange={(html) => update(i, { description: html })}
+                />
+              </div>
             </div>
           </div>
         ))
