@@ -228,7 +228,7 @@ async function cmsFormMutate<T>(path: string, method: string, form: FormData): P
   }
 }
 
-function withResolvedMedia<T extends { image?: string | null; logo?: string | null; cover_image?: string | null; og_image?: string | null; featured_image?: string | null; avatar?: string | null }>(
+function withResolvedMedia<T extends { image?: string | null; logo?: string | null; cover_image?: string | null; og_image?: string | null; featured_image?: string | null; avatar?: string | null; sections?: Array<{ image?: string | null }> }>(
   row: T,
 ): T {
   const next = { ...row };
@@ -240,6 +240,12 @@ function withResolvedMedia<T extends { image?: string | null; logo?: string | nu
     next.featured_image = resolveMediaUrl(next.featured_image);
   }
   if ("avatar" in next && next.avatar) next.avatar = resolveMediaUrl(next.avatar);
+  if (Array.isArray(next.sections)) {
+    next.sections = next.sections.map((section) => ({
+      ...section,
+      image: section.image ? resolveMediaUrl(section.image) : section.image,
+    }));
+  }
   return next;
 }
 
@@ -295,6 +301,7 @@ export type CmsBlogSection = {
   blog_post?: string;
   title?: string | null;
   description: string;
+  image?: string | null;
   order?: number;
   created_at?: string;
   updated_at?: string;
@@ -349,6 +356,7 @@ export type CmsEvent = {
   meta_title?: string | null;
   meta_description?: string | null;
   og_image?: string | null;
+  created_at?: string | null;
 };
 
 export type CmsHomepageFeature = {
@@ -512,6 +520,8 @@ export const cmsApi = {
   createBlogPostForm: (form: FormData) => cmsFormMutate<CmsBlogPost>("/blog/", "POST", form),
   updateBlogPostForm: (slug: string, form: FormData) =>
     cmsFormMutate<CmsBlogPost>(`/blog/${slug}/`, "PATCH", form),
+  patchBlogSectionForm: (sectionId: string | number, form: FormData) =>
+    cmsFormMutate<CmsBlogSection>(`/blog-sections/${sectionId}/`, "PATCH", form),
 
   listEvents: async () => {
     const rows = await cmsList<CmsEvent>("/events/");

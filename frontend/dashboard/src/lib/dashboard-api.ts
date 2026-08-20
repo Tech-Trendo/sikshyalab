@@ -3,9 +3,9 @@
  * Falls back silently when backend/JWT is unavailable.
  */
 
-import { getAccessToken } from "./api";
+import { authedFetch, getAccessToken } from "./api";
 import { resolveApiBase } from "./api-base";
-import { batchEndpoints, courseEndpoints } from "./api-endpoints";
+import { assignmentEndpoints, batchEndpoints, courseEndpoints } from "./api-endpoints";
 import { cmsApi } from "./cms-api";
 
 const API_BASE = resolveApiBase();
@@ -35,13 +35,19 @@ async function parseBody<T>(res: Response): Promise<T | null> {
 function errorMessageFromBody(body: unknown, status: number): string {
   if (body && typeof body === "object") {
     const b = body as Record<string, unknown>;
-    if (typeof b.message === "string" && b.message) return b.message;
-    if (typeof b.detail === "string" && b.detail) return b.detail;
     const errors = b.errors;
-    if (errors && typeof errors === "object" && errors !== null && "detail" in errors) {
-      const detail = (errors as { detail?: unknown }).detail;
-      if (typeof detail === "string") return detail;
+    if (errors && typeof errors === "object" && errors !== null && !Array.isArray(errors)) {
+      const parts: string[] = [];
+      for (const [field, value] of Object.entries(errors as Record<string, unknown>)) {
+        const text = Array.isArray(value) ? value.filter(Boolean).join(", ") : String(value || "");
+        if (!text) continue;
+        if (field === "detail" || field === "non_field_errors") parts.push(text);
+        else parts.push(`${field}: ${text}`);
+      }
+      if (parts.length) return parts.join(" · ");
     }
+    if (typeof b.message === "string" && b.message && b.message !== "Validation failed") return b.message;
+    if (typeof b.detail === "string" && b.detail) return b.detail;
   }
   return `Request failed (${status})`;
 }
@@ -258,6 +264,7 @@ export type ApiCourseRow = {
   status?: string;
   is_published?: boolean;
   updated_at?: string | null;
+  created_at?: string | null;
 };
 export type ApiBatchRow = {
   id: string;
@@ -370,12 +377,128 @@ export type ApiAssignmentRow = {
   status?: string;
   allocations?: unknown[];
 };
+
+export type AssignmentRosterStudent = {
+  id: string;
+  name: string;
+  submissionId?: string;
+};
+
+function unwrapStudentRows(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  if (!raw || typeof raw !== "object") return [];
+  const obj = raw as Record<string, unknown>;
+  for (const key of ["results", "students", "submitted_students", "missed_students", "data"]) {
+    const value = obj[key];
+    if (Array.isArray(value)) return value;
+  }
+  return [];
+}
+
+function normalizeAssignmentRosterStudent(raw: unknown): AssignmentRosterStudent | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const nested =
+    row.student && typeof row.student === "object" ? (row.student as Record<string, unknown>) : null;
+  const source = nested || row;
+  const id = String(
+    source.student_id ??
+      source.studentId ??
+      source.id ??
+      row.student_id ??
+      row.studentId ??
+      row.student ??
+      "",
+  ).trim();
+  const name = String(
+    source.full_name ??
+      source.student_name ??
+      source.name ??
+      source.studentName ??
+      row.full_name ??
+      row.student_name ??
+      row.name ??
+      id,
+  ).trim();
+  if (!id && !name) return null;
+  const submission =
+    row.submission_id ?? row.submissionId ?? row.submission ?? source.submission_id ?? source.submission;
+  return {
+    id: id || name,
+    name: name || id,
+    submissionId:
+      submission && typeof submission !== "object" ? String(submission) : undefined,
+  };
+}
+
+async function fetchAssignmentRoster(path: string): Promise<AssignmentRosterStudent[]> {
+  const fromGet = await apiGet<unknown>(path);
+  let rows = unwrapStudentRows(fromGet);
+  if (!rows.length) {
+    rows = await apiList<unknown>(path);
+  }
+  return rows
+    .map(normalizeAssignmentRosterStudent)
+    .filter((row): row is AssignmentRosterStudent => row != null);
+}
+
+export async function fetchSubmittedStudents(assignmentId: string): Promise<AssignmentRosterStudent[]> {
+  if (!assignmentId) return [];
+  return fetchAssignmentRoster(assignmentEndpoints.submittedStudents(assignmentId));
+}
+
+export async function fetchMissedStudents(assignmentId: string): Promise<AssignmentRosterStudent[]> {
+  if (!assignmentId) return [];
+  return fetchAssignmentRoster(assignmentEndpoints.missedStudents(assignmentId));
+}
+
 export type ApiSubmissionRow = {
   id: string;
   assignment?: string;
   student?: string;
+  content?: string;
+  attachment?: string | null;
+  submitted_at?: string;
   status?: string;
+  attempt_number?: number;
+  review?: { marks_obtained?: number; feedback?: string } | null;
 };
+
+export async function submitAssignmentMultipart(payload: {
+  assignment: string;
+  content?: string;
+  attachment?: File;
+}): Promise<{ ok: boolean; data: ApiSubmissionRow | null; error: string | null }> {
+  if (!getAccessToken()) return { ok: false, data: null, error: "Not authenticated" };
+  const form = new FormData();
+  form.append("assignment", payload.assignment);
+  form.append("content", payload.content || "");
+  if (payload.attachment) form.append("attachment", payload.attachment);
+  try {
+    const res = await authedFetch(assignmentEndpoints.submissions(), {
+      method: "POST",
+      body: form,
+      headers: { Accept: "application/json" },
+    });
+    if (!res) return { ok: false, data: null, error: "Network error" };
+    let raw: unknown = null;
+    try {
+      raw = await res.json();
+    } catch {
+      raw = null;
+    }
+    if (!res.ok) {
+      return { ok: false, data: null, error: errorMessageFromBody(raw, res.status) };
+    }
+    const data =
+      raw && typeof raw === "object" && "data" in raw
+        ? ((raw as { data: ApiSubmissionRow }).data ?? null)
+        : (raw as ApiSubmissionRow | null);
+    return { ok: true, data, error: null };
+  } catch {
+    return { ok: false, data: null, error: "Network error" };
+  }
+}
 export type ApiCertificateRow = {
   id: string;
   certificate_number?: string;
@@ -416,6 +539,9 @@ export type ApiSeoRow = {
   og_image?: string | null;
   twitter_card?: string;
   robots?: string;
+  content_type?: number | string;
+  object_id?: string;
+  created_at?: string;
 };
 
 export type RevenueSummary = {

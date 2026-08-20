@@ -23,6 +23,7 @@ import type {
 } from "./dashboard-api";
 import type { BoardTask, TaskStatus } from "./mock";
 import { resolveCourseThumbnail } from "./course-media";
+import { resolveMediaUrl } from "./media-url";
 
 type MappedStudent = {
   id: string;
@@ -83,6 +84,7 @@ type MappedCourse = {
   faqs?: { id?: string; question: string; answer: string }[];
   outcomes: string[];
   isPublished?: boolean;
+  createdAt?: string;
   _uuid?: string;
   chapters: {
     id?: string;
@@ -171,6 +173,7 @@ type MappedSeoPage = {
   ogImage?: string;
   robots?: string;
   id?: string;
+  createdAt?: string;
 };
 
 export type MappedDashboardData = {
@@ -185,15 +188,21 @@ export type MappedDashboardData = {
   seoPages: MappedSeoPage[];
   submissions: {
     id: string;
+    assignmentId?: string;
     assignmentTitle: string;
     studentId: string;
+    studentUuid?: string;
     studentName: string;
     notes: string;
     fileName: string;
+    fileUrl: string | null;
+    fileType?: string;
+    fileSize?: number;
     submittedAt: string;
     score?: number;
     feedback?: string;
     status: "submitted" | "reviewed";
+    apiStatus?: string;
   }[];
   blog: { slug: string; title: string; excerpt: string; author: string; date: string; cover: string }[];
   events: { title: string; date: string; time: string; location: string; tag: string }[];
@@ -220,6 +229,15 @@ function formatDate(d?: string | null): string {
     return dt.toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" });
   } catch {
     return d;
+  }
+}
+
+export function fileNameFromMediaUrl(url?: string | null): string {
+  if (!url) return "";
+  try {
+    return decodeURIComponent(url.split("?")[0].split("/").pop() || "") || "";
+  } catch {
+    return "";
   }
 }
 
@@ -413,8 +431,13 @@ function buildLookups(bundle: DashboardBundle) {
   }
 
   const studentUuidToCode = new Map<string, string>();
+  const studentUuidToName = new Map<string, string>();
   for (const s of bundle.students) {
     studentUuidToCode.set(String(s.id), s.student_id);
+    const name =
+      s.full_name ||
+      [s.user?.first_name, s.user?.last_name].filter(Boolean).join(" ").trim();
+    if (name) studentUuidToName.set(String(s.id), name);
   }
 
   const chaptersByCourse = new Map<string, ApiChapterRow[]>();
@@ -465,6 +488,7 @@ function buildLookups(bundle: DashboardBundle) {
     submissionsByAssignment,
     assignmentIdToTitle,
     studentUuidToCode,
+    studentUuidToName,
     chaptersByCourse,
     teacherCourses,
   };
@@ -556,7 +580,8 @@ export function mapDashboardBundle(bundle: DashboardBundle): MappedDashboardData
     };
   });
 
-  const courses: MappedCourse[] = bundle.courses.map((c) => {
+  const courses: MappedCourse[] = bundle.courses
+    .map((c) => {
     const chaptersRaw = (L.chaptersByCourse.get(String(c.id)) || []).sort(
       (a, b) => (a.order ?? 0) - (b.order ?? 0),
     );
@@ -644,10 +669,16 @@ export function mapDashboardBundle(bundle: DashboardBundle): MappedDashboardData
       isPublished:
         Boolean(c.is_published) &&
         (!c.status || String(c.status).toUpperCase() === "PUBLISHED"),
+      createdAt: c.created_at || c.updated_at || undefined,
       chapters,
       _uuid: String(c.id),
     };
-  });
+  })
+    .sort((a, b) => {
+      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return tb - ta;
+    });
 
   const batches: MappedBatch[] = bundle.batches.map((b) => ({
     id: b.code || String(b.id),
@@ -762,7 +793,7 @@ export function mapDashboardBundle(bundle: DashboardBundle): MappedDashboardData
     assignedBy: t.assigned_by || undefined,
   }));
 
-  const seoPages: MappedSeoPage[] = bundle.seoPages.length
+  const seoPages: MappedSeoPage[] = (bundle.seoPages.length
     ? bundle.seoPages.map((p) => ({
         id: String(p.id),
         path: p.canonical_url || (p.slug ? `/${p.slug}` : "/"),
@@ -773,24 +804,45 @@ export function mapDashboardBundle(bundle: DashboardBundle): MappedDashboardData
         canonical: p.canonical_url || undefined,
         ogImage: p.og_image || undefined,
         robots: p.robots || undefined,
+        createdAt: p.created_at,
       }))
-    : [];
+    : []
+  ).sort((a, b) => {
+    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return tb - ta;
+  });
 
   const submissions = bundle.submissions.map((s) => {
-    const assignmentTitle = s.assignment ? L.assignmentIdToTitle.get(String(s.assignment)) || "Assignment" : "Assignment";
-    const studentCode = s.student ? L.studentUuidToCode.get(String(s.student)) || String(s.student) : "";
-    const reviewed = (s as ApiSubmissionRow & { review?: { marks_obtained?: number; feedback?: string } }).review;
+    const assignmentId = s.assignment ? String(s.assignment) : undefined;
+    const assignmentTitle = assignmentId
+      ? L.assignmentIdToTitle.get(assignmentId) || "Assignment"
+      : "Assignment";
+    const studentUuid = s.student ? String(s.student) : "";
+    const studentCode = studentUuid ? L.studentUuidToCode.get(studentUuid) || studentUuid : "";
+    const studentName =
+      (studentUuid ? L.studentUuidToName.get(studentUuid) : undefined) || studentCode;
+    const reviewed = s.review;
+    const fileUrl = resolveMediaUrl(s.attachment) || (s.attachment ? String(s.attachment) : null);
+    const normalizedUrl =
+      fileUrl && !fileUrl.startsWith("http") && !fileUrl.startsWith("/")
+        ? resolveMediaUrl(`/media/${fileUrl.replace(/^\/+/, "")}`)
+        : fileUrl;
     return {
       id: String(s.id),
+      assignmentId,
       assignmentTitle,
       studentId: studentCode,
-      studentName: studentCode,
-      notes: (s as ApiSubmissionRow & { content?: string }).content || "",
-      fileName: "",
-      submittedAt: (s as ApiSubmissionRow & { submitted_at?: string }).submitted_at || new Date().toISOString(),
+      studentUuid: studentUuid || undefined,
+      studentName,
+      notes: s.content || "",
+      fileName: fileNameFromMediaUrl(normalizedUrl) || fileNameFromMediaUrl(s.attachment),
+      fileUrl: normalizedUrl,
+      submittedAt: s.submitted_at || new Date().toISOString(),
       score: reviewed?.marks_obtained != null ? Number(reviewed.marks_obtained) : undefined,
       feedback: reviewed?.feedback,
       status: reviewed ? ("reviewed" as const) : ("submitted" as const),
+      apiStatus: s.status,
     };
   });
 

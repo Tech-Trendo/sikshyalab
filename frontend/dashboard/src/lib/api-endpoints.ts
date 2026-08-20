@@ -38,6 +38,20 @@ export const teacherEndpoints = {
     withSlash(`/teachers/profiles/${encodeURIComponent(id)}/assign-courses`),
 };
 
+export const assignmentEndpoints = {
+  list: () => withSlash("/assignments/assignments"),
+  detail: (id: string) => withSlash(`/assignments/assignments/${encodeURIComponent(id)}`),
+  submissions: () => withSlash("/assignments/submissions"),
+  submittedStudents: (id: string) =>
+    withSlash(`/assignments/assignments/${encodeURIComponent(id)}/submitted-students`),
+  missedStudents: (id: string) =>
+    withSlash(`/assignments/assignments/${encodeURIComponent(id)}/missed-students`),
+  gradeSubmission: (id: string) =>
+    withSlash(`/assignments/submissions/${encodeURIComponent(id)}/grade`),
+  submissionDownload: (id: string) =>
+    withSlash(`/assignments/submissions/${encodeURIComponent(id)}/download`),
+};
+
 export const contentEndpoints = {
   blogPostSections: (postId: string | number) =>
     withSlash(`/content/blog-posts/${encodeURIComponent(String(postId))}/sections`),
@@ -53,6 +67,22 @@ export const contentEndpoints = {
     withSlash(
       `/content/resources/${encodeURIComponent(resourceId)}/timestamps/${encodeURIComponent(timestampId)}`,
     ),
+};
+
+export const rolesEndpoints = {
+  permissions: () => withSlash("/roles/permissions"),
+  roles: () => withSlash("/roles/roles"),
+  roleDetail: (id: string | number) => withSlash(`/roles/roles/${encodeURIComponent(String(id))}`),
+  rolePermissions: (role: string | number) =>
+    withSlash(`/roles/${encodeURIComponent(String(role))}/permissions`),
+  assignPermissions: (id: string | number) =>
+    withSlash(`/roles/roles/${encodeURIComponent(String(id))}/assign-permissions`),
+  userPermissions: (userId: string | number) =>
+    withSlash(`/users/${encodeURIComponent(String(userId))}/permissions`),
+  /** Self-service: effective permissions for the logged-in user (any role). */
+  currentUserPermissions: () => withSlash("/users/me/permissions"),
+  userRolesForUser: (userId: string | number) =>
+    withSlash(`/roles/user-roles/?user=${encodeURIComponent(String(userId))}`),
 };
 
 /** Public site path for a course (not an API URL). */

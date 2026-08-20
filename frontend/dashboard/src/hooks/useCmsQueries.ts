@@ -125,12 +125,17 @@ export function useCreateBlogMutation() {
       payload: Parameters<typeof cmsApi.createBlogPost>[0];
       coverFile?: File;
       ogFile?: File;
+      sectionFiles?: Array<File | undefined>;
     }) => {
-      if (input.coverFile || input.ogFile) {
+      const hasSectionFiles = Boolean(input.sectionFiles?.some(Boolean));
+      if (input.coverFile || input.ogFile || hasSectionFiles) {
         const form = new FormData();
         appendPayloadToForm(form, input.payload as Record<string, unknown>);
         if (input.coverFile) form.append("cover_image", input.coverFile);
         if (input.ogFile) form.append("og_image", input.ogFile);
+        input.sectionFiles?.forEach((file, i) => {
+          if (file) form.append(`sections[${i}]image`, file);
+        });
         const result = await cmsApi.createBlogPostForm(form);
         if (!result.ok) throw new Error(result.error);
         return result.data;
@@ -151,17 +156,23 @@ export function useUpdateBlogMutation() {
       patch,
       coverFile,
       ogFile,
+      sectionFiles,
     }: {
       slug: string;
       patch: Parameters<typeof cmsApi.updateBlogPost>[1];
       coverFile?: File;
       ogFile?: File;
+      sectionFiles?: Array<File | undefined>;
     }) => {
-      if (coverFile || ogFile) {
+      const hasSectionFiles = Boolean(sectionFiles?.some(Boolean));
+      if (coverFile || ogFile || hasSectionFiles) {
         const form = new FormData();
         appendPayloadToForm(form, patch as Record<string, unknown>);
         if (coverFile) form.append("cover_image", coverFile);
         if (ogFile) form.append("og_image", ogFile);
+        sectionFiles?.forEach((file, i) => {
+          if (file) form.append(`sections[${i}]image`, file);
+        });
         const result = await cmsApi.updateBlogPostForm(slug, form);
         if (!result.ok) throw new Error(result.error);
         return result.data;

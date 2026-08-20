@@ -26,6 +26,7 @@ export type Course = {
   highlights?: { heading: string; description: string }[];
   faqs?: { id?: string; question: string; answer: string }[];
   outcomes: string[];
+  createdAt?: string;
   /** Visible on the public site when true */
   isPublished?: boolean;
   /** Backend course UUID for content API */
@@ -183,6 +184,7 @@ export const assignments: {
   status: "Active" | "Grading" | "Completed";
   teacher: string;
   portalOpen: boolean;
+  _uuid?: string;
 }[] = [];
 export const seedTasks: BoardTask[] = [];
 export const taskBoard: Record<string, { title: string; course: string; due: string }[]> = {
