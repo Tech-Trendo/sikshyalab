@@ -25,11 +25,22 @@ function looksLikeHtml(source: string): boolean {
   return /<\/?[a-z][\s\S]*>/i.test(source.trim());
 }
 
+/** Strip script/style/handlers from trusted CMS HTML before rendering. */
+function sanitizeHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, "")
+    .replace(/<iframe[\s\S]*?>[\s\S]*?<\/iframe>/gi, "")
+    .replace(/<object[\s\S]*?>[\s\S]*?<\/object>/gi, "")
+    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/javascript:/gi, "");
+}
+
 /** Convert Markdown (or pass through HTML) into safe-enough HTML for blog display. */
 export function renderBlogContent(source: string): string {
   const raw = (source || "").trim();
   if (!raw) return "";
-  if (looksLikeHtml(raw)) return raw;
+  if (looksLikeHtml(raw)) return sanitizeHtml(raw);
 
   const lines = raw.replace(/\r\n/g, "\n").split("\n");
   const html: string[] = [];
@@ -114,5 +125,5 @@ export function renderBlogContent(source: string): string {
 
   flushParagraph();
   closeLists();
-  return html.join("\n");
+  return sanitizeHtml(html.join("\n"));
 }

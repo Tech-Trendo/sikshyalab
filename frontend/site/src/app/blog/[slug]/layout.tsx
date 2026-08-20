@@ -19,6 +19,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     description,
     path: `/blog/${slug}`,
     image: post?.og_image || post?.cover_image || null,
+    ogType: "article",
   });
 }
 
