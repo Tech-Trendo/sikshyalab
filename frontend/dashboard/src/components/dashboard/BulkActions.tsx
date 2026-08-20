@@ -1,6 +1,6 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Download, FileUp, FileText } from "lucide-react";
+import { Download, FileUp, FileText, Loader2 } from "lucide-react";
 import { downloadCsv, exportPdf, parseCsvFile } from "@/lib/dashboard-utils";
 import { toast } from "sonner";
 
@@ -28,6 +28,7 @@ export function BulkActions({
   onImport,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [exporting, setExporting] = useState(false);
 
   const handleImport = async (file: File) => {
     try {
@@ -36,6 +37,28 @@ export function BulkActions({
       else toast.success(`Imported ${Math.max(0, rows.length - 1)} ${entity} row(s)`);
     } catch {
       toast.error("Failed to read CSV file");
+    }
+  };
+
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const rows = exportRows.length ? exportRows : csvSampleRows;
+      const result = await exportPdf(
+        `${entity} report`,
+        exportHeaders ?? csvHeaders,
+        rows,
+      );
+      if (result.ok) {
+        toast.success(rows.length ? "PDF exported" : "PDF exported (no records)");
+      } else {
+        toast.error(result.error || "Could not export PDF");
+      }
+    } catch {
+      toast.error("Could not export PDF");
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -72,16 +95,15 @@ export function BulkActions({
         <Button
           variant="outline"
           size="sm"
-          onClick={() => {
-            void exportPdf(
-              `${entity} report`,
-              exportHeaders ?? csvHeaders,
-              exportRows.length ? exportRows : csvSampleRows,
-              { subtitle: `ShikshaLab ${entity} export — ${(exportRows.length ? exportRows : csvSampleRows).length} record(s)` },
-            ).then(() => toast.success("PDF exported"));
-          }}
+          disabled={exporting}
+          onClick={() => void handleExport()}
         >
-          <FileText className="mr-1 h-4 w-4" /> Export PDF
+          {exporting ? (
+            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+          ) : (
+            <FileText className="mr-1 h-4 w-4" />
+          )}
+          {exporting ? "Exporting…" : "Export PDF"}
         </Button>
       )}
     </div>

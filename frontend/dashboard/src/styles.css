@@ -203,3 +203,12 @@
   border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
   backdrop-filter: blur(12px);
 }
+
+.tiptap p.is-editor-empty:first-child::before,
+.tiptap p.is-empty:first-child::before {
+  color: var(--muted-foreground);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}

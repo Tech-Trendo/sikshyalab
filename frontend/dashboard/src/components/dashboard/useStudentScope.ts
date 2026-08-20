@@ -27,7 +27,12 @@ export function useStudentScope() {
     const myTasks = isStudent
       ? data.tasks
       : data.tasks.filter((t) => t.studentId === resolvedId);
-    const mySubmissions = data.submissions.filter((s) => s.studentId === resolvedId);
+    const mySubmissions = data.submissions.filter((s) =>
+      s.studentId === resolvedId ||
+      s.studentId === studentId ||
+      Boolean(me?._uuid && (s.studentUuid === me._uuid || s.studentId === me._uuid)) ||
+      Boolean(studentId && s.studentUuid === studentId),
+    );
     const myCertificates = me
       ? data.certificates.filter((c) => c.student === me.name)
       : [];

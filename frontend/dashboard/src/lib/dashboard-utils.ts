@@ -29,7 +29,7 @@ export function downloadCsv(filename: string, headers: string[], rows: (string |
   URL.revokeObjectURL(url);
 }
 
-/** Build a branded PDF and download it. Also posts to backend when available. */
+/** Build a branded PDF and download it. Table reports are built client-side so every row is included. */
 export async function exportPdf(
   title: string,
   headers: string[],
@@ -41,47 +41,70 @@ export async function exportPdf(
     format?: "report" | "certificate";
     certificate?: import("./pdf-export").CertificatePdfData;
   },
-) {
+): Promise<{ ok: boolean; error?: string }> {
   const filename = opts?.filename || `${slugify(title)}.pdf`;
   const isCertificate = opts?.format === "certificate" || Boolean(opts?.certificate);
-
-  const apiUrl = opts?.apiUrl || (isCertificate ? "/api/v1/exports/pdf/public/" : "/api/v1/exports/pdf/public/");
-  try {
-    const res = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/pdf" },
-      body: JSON.stringify({
-        title,
-        headers,
-        rows,
-        subtitle: opts?.subtitle,
-        format: isCertificate ? "certificate" : "report",
-        certificate: opts?.certificate,
-      }),
-    });
-    if (res.ok) {
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-      return;
-    }
-  } catch {
-    // fall through to client PDF
-  }
-
   const { buildBrandedCertificatePdf, buildBrandedReportPdf, downloadPdfBytes } = await import("./pdf-export");
-  const bytes = isCertificate && opts?.certificate
-    ? buildBrandedCertificatePdf(opts.certificate)
-    : buildBrandedReportPdf(
+
+  try {
+    if (!isCertificate) {
+      const bytes = buildBrandedReportPdf(
         { title, subtitle: opts?.subtitle, generatedAt: new Date().toLocaleString() },
         headers,
         rows,
       );
-  downloadPdfBytes(bytes, filename);
+      downloadPdfBytes(bytes, filename);
+      return { ok: true };
+    }
+
+    const { resolveApiBase } = await import("./api-base");
+    const { getAccessToken } = await import("./api");
+    const apiUrl = opts?.apiUrl || `${resolveApiBase()}/exports/pdf/`;
+    const token = getAccessToken();
+    try {
+      const res = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/pdf",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          title,
+          headers,
+          rows,
+          subtitle: opts?.subtitle,
+          format: "certificate",
+          certificate: opts?.certificate,
+        }),
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        return { ok: true };
+      }
+    } catch {
+      // fall through to client PDF
+    }
+
+    const bytes = opts?.certificate
+      ? buildBrandedCertificatePdf(opts.certificate)
+      : buildBrandedReportPdf(
+          { title, subtitle: opts?.subtitle, generatedAt: new Date().toLocaleString() },
+          headers,
+          rows,
+        );
+    downloadPdfBytes(bytes, filename);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "PDF export failed" };
+  }
 }
 
 /** Export a single certificate in the branded ShikshaLab certificate layout. */

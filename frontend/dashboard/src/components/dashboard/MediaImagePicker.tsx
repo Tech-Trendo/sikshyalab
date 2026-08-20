@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { ImagePlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -9,6 +9,7 @@ type MediaImagePickerProps = {
   hint?: string;
   value?: string;
   aspect?: "video" | "square";
+  disabled?: boolean;
   onChange: (previewUrl: string, file?: File) => void;
   onClear?: () => void;
 };
@@ -59,10 +60,12 @@ export function MediaImagePicker({
   hint = "One image. Cropped before upload.",
   value,
   aspect = "video",
+  disabled,
   onChange,
   onClear,
 }: MediaImagePickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const inputId = useId();
   const [busy, setBusy] = useState(false);
 
   const pick = async (file?: File) => {
@@ -99,6 +102,7 @@ export function MediaImagePicker({
                 size="icon"
                 variant="secondary"
                 className="absolute right-2 top-2 h-8 w-8"
+                disabled={disabled}
                 onClick={() => {
                   onClear?.();
                   onChange("", undefined);
@@ -111,7 +115,7 @@ export function MediaImagePicker({
           ) : (
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || disabled}
               className="flex h-full w-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground hover:bg-muted/50"
               onClick={() => inputRef.current?.click()}
             >
@@ -123,15 +127,23 @@ export function MediaImagePicker({
       </div>
       <input
         ref={inputRef}
-        id="media-image-picker"
-        name="media_image"
+        id={inputId}
+        name={inputId}
         type="file"
         accept="image/*"
         className="hidden"
+        disabled={disabled}
         onChange={(e) => void pick(e.target.files?.[0])}
       />
       {value && (
-        <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => inputRef.current?.click()}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mt-2"
+          disabled={disabled}
+          onClick={() => inputRef.current?.click()}
+        >
           Replace image
         </Button>
       )}
