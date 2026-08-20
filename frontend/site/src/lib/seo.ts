@@ -1,11 +1,16 @@
 /**
  * Public SEO helpers for the Next.js marketing site.
- * Generic pages use Django `/api/v1/seo/lookup/` and `/api/v1/seo/sitemap/`.
- * Blog, Course, and Event pages use `meta_title`, `meta_description`, and `og_image` on the object.
+ *
+ * Do not add og_title / og_description / og_image on SiteSetting.
+ * Site settings only supply fallbacks (site_name, tagline, logo).
+ * Per-path OG lives in `/api/v1/seo/lookup/`.
+ * Blog, course, and event pages use `meta_title`, `meta_description`, and `og_image` on the object.
+ *
+ * Social images should be 1200×630px (absolute URLs). Relative paths are resolved here.
  */
 
 import type { Metadata } from "next";
-import { apiBase } from "@/lib/env";
+import { apiBase, resolveMediaUrl } from "@/lib/env";
 
 export type PublicSeoMetadata = {
   meta_title?: string;
@@ -44,6 +49,20 @@ export type SitemapFetchResult =
   | { ok: false; entries: []; error: string };
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:8081").replace(/\/$/, "");
+
+/** Facebook / LinkedIn / Twitter large-card preview size. */
+export const OG_IMAGE_WIDTH = 1200;
+export const OG_IMAGE_HEIGHT = 630;
+
+const FALLBACK_SITE_NAME = "shikshalab";
+const FALLBACK_TAGLINE =
+  "Learn in-demand tech skills from industry experts. Live batches, hands-on projects, and verified certificates.";
+
+export type SiteSeoDefaults = {
+  siteName: string;
+  tagline: string;
+  logo?: string;
+};
 
 /** Absolute API base for SSR (relative `/api/v1` only works in the browser). */
 function resolveApiBase(): string {
@@ -155,9 +174,25 @@ export async function fetchSeoSitemap(): Promise<SitemapApiEntry[]> {
 
 function absoluteUrl(url?: string | null): string | undefined {
   if (!url) return undefined;
-  if (url.startsWith("http://") || url.startsWith("https://")) return url;
-  if (url.startsWith("/")) return `${SITE_URL}${url}`;
-  return url;
+  const trimmed = url.trim();
+  if (!trimmed || trimmed.startsWith("data:") || trimmed.startsWith("blob:")) return undefined;
+  const media = resolveMediaUrl(trimmed);
+  if (media && (media.startsWith("http://") || media.startsWith("https://"))) return media;
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
+  if (trimmed.startsWith("/")) return `${SITE_URL}${trimmed}`;
+  return trimmed;
+}
+
+export async function fetchSiteDefaults(): Promise<SiteSeoDefaults> {
+  const settings = await seoFetch<{
+    site_name?: string;
+    tagline?: string;
+    logo?: string | null;
+  }>("/cms/settings/current/");
+  const siteName = settings?.site_name?.trim() || FALLBACK_SITE_NAME;
+  const tagline = settings?.tagline?.trim() || FALLBACK_TAGLINE;
+  const logo = absoluteUrl(settings?.logo) || `${SITE_URL}/shikshalab-logo.png`;
+  return { siteName, tagline, logo };
 }
 
 function normalizePath(path: string): string {
@@ -187,18 +222,32 @@ function seoMatchesPath(seo: PublicSeoMetadata, path: string): boolean {
 
 export function seoToNextMetadata(
   seo: PublicSeoMetadata | null | undefined,
-  fallback: { title?: string; description?: string; path?: string } = {},
+  fallback: {
+    title?: string;
+    description?: string;
+    path?: string;
+    siteName?: string;
+    image?: string | null;
+    ogType?: "website" | "article";
+  } = {},
 ): Metadata {
   const safeSeo =
     seo && fallback.path && !seoMatchesPath(seo, fallback.path) ? null : seo;
   const title = safeSeo?.meta_title || fallback.title;
   const description = safeSeo?.meta_description || fallback.description;
+  const siteName = fallback.siteName || FALLBACK_SITE_NAME;
   const canonical =
     absoluteUrl(safeSeo?.canonical_url) ||
     (fallback.path ? `${SITE_URL}${fallback.path.startsWith("/") ? fallback.path : `/${fallback.path}`}` : undefined);
-  const ogImage = absoluteUrl(safeSeo?.og_image as string | undefined);
+  const ogImage =
+    absoluteUrl(safeSeo?.og_image as string | undefined) || absoluteUrl(fallback.image);
   const twitterImage = absoluteUrl((safeSeo?.twitter_image as string | undefined) || ogImage);
   const robots = safeSeo?.robots || (safeSeo?.is_indexed === false ? "noindex,nofollow" : "index,follow");
+  const ogType = (safeSeo?.og_type as "website" | "article") || fallback.ogType || "website";
+  const socialTitle = safeSeo?.og_title || title || siteName;
+  const socialDescription = safeSeo?.og_description || description || undefined;
+  const twitterTitle = safeSeo?.twitter_title || socialTitle;
+  const twitterDescription = safeSeo?.twitter_description || socialDescription;
 
   return {
     title: title || undefined,
@@ -209,17 +258,28 @@ export function seoToNextMetadata(
     alternates: canonical ? { canonical } : undefined,
     robots,
     openGraph: {
-      type: (safeSeo?.og_type as "website" | "article") || "website",
-      title: safeSeo?.og_title || title || undefined,
-      description: safeSeo?.og_description || description || undefined,
+      type: ogType,
+      title: socialTitle,
+      description: socialDescription,
       url: canonical,
-      siteName: "skillsikshya",
-      images: ogImage ? [{ url: ogImage }] : undefined,
+      siteName,
+      images: ogImage
+        ? [
+            {
+              url: ogImage,
+              width: OG_IMAGE_WIDTH,
+              height: OG_IMAGE_HEIGHT,
+              alt: socialTitle,
+            },
+          ]
+        : undefined,
     },
     twitter: {
-      card: (safeSeo?.twitter_card as "summary" | "summary_large_image") || "summary_large_image",
-      title: safeSeo?.twitter_title || safeSeo?.og_title || title || undefined,
-      description: safeSeo?.twitter_description || safeSeo?.og_description || description || undefined,
+      card:
+        (safeSeo?.twitter_card as "summary" | "summary_large_image") ||
+        (ogImage ? "summary_large_image" : "summary"),
+      title: twitterTitle,
+      description: twitterDescription,
       images: twitterImage ? [twitterImage] : undefined,
     },
   };
@@ -229,8 +289,14 @@ export async function getPageMetadata(
   path: string,
   fallback: { title?: string; description?: string } = {},
 ): Promise<Metadata> {
-  const seo = await fetchSeoByPath(path);
-  return seoToNextMetadata(seo, { ...fallback, path });
+  const [seo, defaults] = await Promise.all([fetchSeoByPath(path), fetchSiteDefaults()]);
+  return seoToNextMetadata(seo, {
+    title: fallback.title || defaults.siteName,
+    description: fallback.description || defaults.tagline,
+    path,
+    siteName: defaults.siteName,
+    image: defaults.logo,
+  });
 }
 
 export function stripToPlain(raw?: string | null, max = 160): string {
@@ -242,17 +308,24 @@ export function stripToPlain(raw?: string | null, max = 160): string {
 }
 
 /** SEO from Blog/Course/Event fields — do not call `/seo/lookup` for these models. */
-export function metadataFromEntity(
+export async function metadataFromEntity(
   entity: {
     meta_title?: string | null;
     meta_description?: string | null;
     og_image?: string | null;
   } | null | undefined,
-  fallback: { title: string; description: string; path: string; image?: string | null },
-): Metadata {
+  fallback: {
+    title: string;
+    description: string;
+    path: string;
+    image?: string | null;
+    ogType?: "website" | "article";
+  },
+): Promise<Metadata> {
+  const defaults = await fetchSiteDefaults();
   const title = entity?.meta_title?.trim() || fallback.title;
   const description = entity?.meta_description?.trim() || fallback.description;
-  const og = entity?.og_image || fallback.image || undefined;
+  const og = entity?.og_image || fallback.image || defaults.logo;
   return seoToNextMetadata(
     {
       meta_title: title,
@@ -260,8 +333,16 @@ export function metadataFromEntity(
       og_image: og,
       og_title: title,
       og_description: description,
+      og_type: fallback.ogType || "website",
     },
-    { title, description, path: fallback.path },
+    {
+      title,
+      description,
+      path: fallback.path,
+      siteName: defaults.siteName,
+      image: og,
+      ogType: fallback.ogType,
+    },
   );
 }
 

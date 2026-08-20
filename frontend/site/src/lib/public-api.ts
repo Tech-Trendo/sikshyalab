@@ -87,6 +87,7 @@ export type PublicCourse = {
   meta_title?: string | null;
   meta_description?: string | null;
   og_image?: string | null;
+  created_at?: string | null;
 };
 
 export type PublicCategory = {
@@ -118,6 +119,7 @@ export type PublicBlogSection = {
   blog_post?: string;
   title?: string | null;
   description: string;
+  image?: string | null;
   order: number;
   created_at?: string;
   updated_at?: string;
@@ -145,6 +147,7 @@ export type PublicBlog = {
 };
 
 export type PublicEvent = {
+  id?: string;
   slug: string;
   title: string;
   description?: string;
@@ -158,6 +161,7 @@ export type PublicEvent = {
   meta_title?: string | null;
   meta_description?: string | null;
   og_image?: string | null;
+  created_at?: string | null;
 };
 
 export type PublicFaq = {
@@ -393,15 +397,31 @@ export async function submitEventRegistration(payload: {
   email: string;
   phone?: string;
   message?: string;
+  recaptcha_token?: string;
 }): Promise<{ ok: boolean; message?: string }> {
   try {
+    const requestBody: Record<string, string> = {
+      event_slug: payload.event_slug,
+      name: payload.name.trim(),
+      email: payload.email.trim(),
+      phone: (payload.phone || "").trim(),
+      message: (payload.message || "").trim(),
+    };
+    if (payload.recaptcha_token) {
+      requestBody.recaptcha_token = payload.recaptcha_token;
+    }
     const res = await fetch(`${apiBase()}/cms/event-registrations/`, {
       method: "POST",
+      credentials: "omit",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(requestBody),
     });
     const body = await res.json().catch(() => null);
-    if (res.ok) {
+    const successFlag =
+      body && typeof body === "object" && "success" in body
+        ? Boolean((body as { success?: unknown }).success)
+        : null;
+    if (res.ok || successFlag === true) {
       return {
         ok: true,
         message:
@@ -417,7 +437,19 @@ export async function submitEventRegistration(payload: {
           ? (body as { errors: Record<string, unknown> }).errors
           : (body as Record<string, unknown>);
       if (bag && typeof bag === "object") {
-        for (const key of ["email", "event_slug", "name", "phone", "message", "non_field_errors"]) {
+        for (const key of [
+          "recaptcha_token",
+          "recaptcha",
+          "captcha",
+          "email",
+          "event_slug",
+          "event",
+          "name",
+          "phone",
+          "message",
+          "non_field_errors",
+          "detail",
+        ]) {
           const val = bag[key];
           if (Array.isArray(val) && val[0]) {
             message = String(val[0]);
@@ -429,9 +461,33 @@ export async function submitEventRegistration(payload: {
           }
         }
       }
-      if (message === "Could not submit registration." && "message" in body) {
-        message = String((body as { message?: string }).message || message);
+      if (
+        (message === "Could not submit registration." || /^validation failed$/i.test(message)) &&
+        "message" in body
+      ) {
+        const apiMessage = String((body as { message?: string }).message || "").trim();
+        if (apiMessage && !/^validation failed$/i.test(apiMessage) && !/^an error occurred$/i.test(apiMessage)) {
+          message = apiMessage;
+        }
       }
+    }
+    if (res.status === 403) {
+      message = "Registration was blocked. Refresh the page and try again.";
+    }
+    if (
+      res.status === 400 &&
+      (message === "Could not submit registration." || /recaptcha|captcha|robot/i.test(message)) &&
+      body &&
+      typeof body === "object" &&
+      ("recaptcha_token" in body ||
+        "recaptcha" in body ||
+        ("errors" in body &&
+          typeof (body as { errors?: unknown }).errors === "object" &&
+          (body as { errors: Record<string, unknown> }).errors &&
+          ("recaptcha_token" in (body as { errors: Record<string, unknown> }).errors ||
+            "recaptcha" in (body as { errors: Record<string, unknown> }).errors)))
+    ) {
+      message = "Please complete the reCAPTCHA challenge.";
     }
     return { ok: false, message };
   } catch {
@@ -519,6 +575,7 @@ export async function submitContactMessage(payload: {
     }
     const res = await fetch(`${apiBase()}/cms/contact-messages/`, {
       method: "POST",
+      credentials: "omit",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });

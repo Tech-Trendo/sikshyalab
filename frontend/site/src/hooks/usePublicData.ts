@@ -26,6 +26,7 @@ import { mapPublicTestimonialRow } from "@/lib/testimonials";
 import type { Course } from "@/lib/mock";
 import { resolveMediaUrl } from "@/lib/env";
 import { resolveCourseThumbnail } from "@/lib/course-media";
+import { newestByDate } from "@/lib/event-time";
 
 export { resolveMediaUrl };
 
@@ -34,6 +35,7 @@ type CourseApiRow = Awaited<ReturnType<typeof fetchPublicCourses>>[number] & {
   instructors?: Array<{ teacher_name?: string; is_primary?: boolean }> | null;
   chapters?: Course["chapters"];
   updated_at?: string | null;
+  created_at?: string | null;
 };
 
 export function mapPublicCourse(c: CourseApiRow, chapters?: Course["chapters"]): Course {
@@ -111,6 +113,7 @@ export function mapPublicCourse(c: CourseApiRow, chapters?: Course["chapters"]):
     whyThisCourseTitle: whyThisCourseTitle || undefined,
     highlights: highlights.length ? highlights : undefined,
     faqs: faqs.length ? faqs : undefined,
+    createdAt: c.created_at || c.updated_at || undefined,
     chapters: normalizedChapters,
   };
 }
@@ -152,7 +155,10 @@ export function usePublicData() {
     queryKey: publicKeys.courses,
     queryFn: async () => {
       const rows = await fetchPublicCourses();
-      return rows.map((c) => mapPublicCourse(c));
+      return newestByDate(
+        rows.map((c) => mapPublicCourse(c)),
+        (c) => c.createdAt,
+      );
     },
     staleTime: 60_000,
   });
@@ -161,9 +167,17 @@ export function usePublicData() {
     queryKey: publicKeys.featuredCourses,
     queryFn: async () => {
       const featured = await fetchFeaturedCourses();
-      if (featured.length) return featured.map((c) => mapPublicCourse(c));
+      if (featured.length) {
+        return newestByDate(
+          featured.map((c) => mapPublicCourse(c)),
+          (c) => c.createdAt,
+        );
+      }
       const all = await fetchPublicCourses();
-      return all.map((c) => mapPublicCourse(c)).slice(0, 6);
+      return newestByDate(
+        all.map((c) => mapPublicCourse(c)),
+        (c) => c.createdAt,
+      ).slice(0, 6);
     },
     staleTime: 60_000,
   });
@@ -205,6 +219,7 @@ export function usePublicData() {
           excerpt: b.excerpt,
           content: b.content || "",
           author: b.author_name || "ShikshaLab",
+          category: String(b.category || "").trim(),
           publishedAt: b.published_at || "",
           date: b.published_at
             ? new Date(b.published_at).toLocaleDateString("en-US", {
@@ -228,24 +243,30 @@ export function usePublicData() {
     queryKey: publicKeys.events,
     queryFn: async () => {
       const rows = await fetchPublicEvents();
-      return rows.map((e) => ({
-        slug: e.slug,
-        title: e.title,
-        date: new Date(e.start_datetime).toLocaleDateString("en-US", {
-          month: "short",
-          day: "2-digit",
-          year: "numeric",
-        }),
-        time: new Date(e.start_datetime).toLocaleTimeString("en-US", {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        location: e.location,
-        tag: "Event",
-        description: e.description || "",
-        cover:
-          resolveMediaUrl(e.cover_image) || "/images/theme/programming-banner.webp",
-      }));
+      return newestByDate(
+        rows.map((e) => ({
+          slug: e.slug,
+          title: e.title,
+          date: new Date(e.start_datetime).toLocaleDateString("en-US", {
+            month: "short",
+            day: "2-digit",
+            year: "numeric",
+          }),
+          time: new Date(e.start_datetime).toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          location: e.location,
+          tag: "Event",
+          description: e.description || "",
+          cover:
+            resolveMediaUrl(e.cover_image) || "/images/theme/programming-banner.webp",
+          startsAt: e.start_datetime,
+          endsAt: e.end_datetime || null,
+          createdAt: e.created_at || e.start_datetime,
+        })),
+        (e) => e.createdAt,
+      );
     },
     staleTime: 60_000,
   });

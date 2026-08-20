@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
 import { GoogleAnalytics } from "@/components/analytics/GoogleAnalytics";
 import { Providers } from "@/components/layout/Providers";
-import { getPageMetadata, SITE_URL } from "@/lib/seo";
+import { fetchSiteDefaults, getPageMetadata, SITE_URL } from "@/lib/seo";
 import "./globals.css";
 
 /** Site-wide typeface */
@@ -13,14 +13,11 @@ const poppins = Poppins({
   display: "swap",
 });
 
-const SITE_NAME = "shikshalab";
-const DEFAULT_TITLE = "shikshalab";
-
 export async function generateMetadata(): Promise<Metadata> {
+  const defaults = await fetchSiteDefaults();
   const page = await getPageMetadata("/", {
-    title: DEFAULT_TITLE,
-    description:
-      "Learn in-demand tech skills from industry experts. Live batches, hands-on projects, and verified certificates.",
+    title: defaults.siteName,
+    description: defaults.tagline,
   });
 
   return {
@@ -35,8 +32,8 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     title: {
       default:
-        (typeof page.title === "string" && page.title) || DEFAULT_TITLE,
-      template: `%s — ${SITE_NAME}`,
+        (typeof page.title === "string" && page.title) || defaults.siteName,
+      template: `%s — ${defaults.siteName}`,
     },
     description: page.description,
     keywords: page.keywords,
@@ -44,7 +41,7 @@ export async function generateMetadata(): Promise<Metadata> {
     robots: page.robots,
     openGraph: page.openGraph,
     twitter: page.twitter,
-    applicationName: SITE_NAME,
+    applicationName: defaults.siteName,
     verification: {
       google: "AUeQdOoRppmQeWF0FE533AQiEzVCLiBzdG-ergqevLg",
     },

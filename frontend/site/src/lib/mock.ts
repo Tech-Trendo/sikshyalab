@@ -22,6 +22,7 @@ export type Course = {
   whyThisCourseTitle?: string;
   highlights?: { heading: string; description: string }[];
   faqs?: { id?: string; question: string; answer: string; order?: number }[];
+  createdAt?: string;
   chapters: {
     title: string;
     parts: {
