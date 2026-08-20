@@ -174,14 +174,14 @@ export function ContactForm() {
           type="submit"
           size="lg"
           disabled={!canSubmit}
-          className="h-12 w-full rounded-full bg-brand-gradient px-8 font-semibold !text-white shadow-none transition-colors duration-brand ease-in-out hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+          className="h-12 w-full rounded-full bg-[#F5A623] px-8 font-semibold !text-white shadow-none transition-colors duration-brand ease-in-out hover:bg-[#FAD9AB] hover:!text-[#181818] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
         >
-          {busy ? "Sending…" : "Send message"}
+          {busy ? "Sending…" : "Send Message"}
         </Button>
         {!recaptchaToken && isRecaptchaConfigured() && !busy ? (
           <p className="mt-2 text-xs text-brand-body">
             Complete the &quot;I&apos;m not a robot&quot; check to enable Send
-            message.
+            Message.
           </p>
         ) : null}
       </div>

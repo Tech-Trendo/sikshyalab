@@ -69,7 +69,7 @@ export default function Page() {
               },
               {
                 i: MapPin,
-                t: "Campus",
+                t: "Address",
                 v: contact.address,
                 href: `https://maps.google.com/?q=${encodeURIComponent(contact.address)}`,
               },
@@ -85,9 +85,9 @@ export default function Page() {
                     </p>
                     <a
                       href={x.href}
-                      target={x.t === "Campus" ? "_blank" : undefined}
+                      target={x.t === "Address" ? "_blank" : undefined}
                       rel={
-                        x.t === "Campus" ? "noopener noreferrer" : undefined
+                        x.t === "Address" ? "noopener noreferrer" : undefined
                       }
                       className="mt-1 block break-words text-[15px] text-brand-body transition-colors duration-brand ease-in-out hover:text-brand-navy"
                     >
