@@ -19,11 +19,13 @@ import { CourseFaqSection } from "@/components/courses/CourseFaqSection";
 import { EventCard } from "@/components/events/EventCard";
 import { EventRegisterDialog } from "@/components/events/EventRegisterDialog";
 import { MediaImage } from "@/components/media/MediaImage";
+import { BlogContent } from "@/components/blog/BlogContent";
 import { SectionContainer } from "@/components/brand/Section";
 import RevealOnScroll, { STAGGER_STEP } from "@/components/motion/RevealOnScroll";
 import { courseToCardProps } from "@/lib/course-card";
 import { fetchPublicEventsByCourse, fetchPublicGalleryByCourse } from "@/lib/public-api";
 import { resolveMediaUrl } from "@/lib/env";
+import { isEventOver } from "@/lib/event-time";
 import { inr, type Course } from "@/lib/mock";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +55,14 @@ function Stars({ rating }: { rating: number }) {
   );
 }
 
+function htmlPlainText(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function CourseInfoTab({
   course,
   expanded,
@@ -62,17 +72,26 @@ function CourseInfoTab({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const desc = course.description;
-  const short = desc.length > 220 ? `${desc.slice(0, 220)}…` : desc;
+  const desc = course.description || "";
+  const needsToggle = htmlPlainText(desc).length > 220;
 
   return (
     <div className="space-y-10">
       <div>
         <h4 className="font-secondary text-lg font-bold text-[#181818]">Course Description</h4>
-        <p className="mt-3 text-justify text-[15px] leading-relaxed text-brand-body">
-          {expanded ? desc : short}
-        </p>
-        {desc.length > 220 && (
+        <div
+          className={cn(
+            "mt-3 text-justify text-[15px] leading-relaxed text-brand-body",
+            !expanded && needsToggle && "line-clamp-5",
+          )}
+        >
+          <BlogContent
+            content={desc}
+            emptyMessage="No description yet."
+            className="!max-w-none !text-[15px] !leading-relaxed !text-brand-body prose-p:!text-[15px] prose-p:!leading-relaxed prose-p:!text-justify prose-p:!text-brand-body prose-li:!text-[15px] prose-li:!text-brand-body prose-headings:!text-[#181818]"
+          />
+        </div>
+        {needsToggle && (
           <button
             type="button"
             onClick={onToggle}
@@ -121,7 +140,14 @@ export function CourseDetailView({
         description: e.description || "",
         cover:
           resolveMediaUrl(e.cover_image) || "/images/theme/programming-banner.webp",
-      }));
+        startsAt: e.start_datetime,
+        endsAt: e.end_datetime || null,
+        createdAt: e.created_at || e.start_datetime,
+      })).sort((a, b) => {
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return tb - ta;
+      });
     },
     staleTime: 60_000,
   });
@@ -293,7 +319,7 @@ export function CourseDetailView({
                           </div>
                         ) : (
                           <>
-                            <div className="grid gap-5 sm:grid-cols-2">
+                            <div className="grid auto-rows-fr gap-5 sm:grid-cols-2">
                               {previewEvents.map((e) => (
                                 <EventCard
                                   key={e.slug}
@@ -304,9 +330,11 @@ export function CourseDetailView({
                                   time={e.time}
                                   location={e.location}
                                   cover={e.cover}
-                                  onRegister={() =>
-                                    setRegisterFor({ slug: e.slug, title: e.title })
-                                  }
+                                  registrationClosed={isEventOver(e.startsAt, e.endsAt)}
+                                  onRegister={() => {
+                                    if (isEventOver(e.startsAt, e.endsAt)) return;
+                                    setRegisterFor({ slug: e.slug, title: e.title });
+                                  }}
                                   className="mx-0 max-w-none"
                                 />
                               ))}

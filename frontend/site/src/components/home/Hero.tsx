@@ -29,12 +29,8 @@ export function Hero() {
     return Number.isFinite(n) && n > 0 ? n : 0;
   }, [stats]);
 
-  // Prefer CMS hero image when present; otherwise the theme girl banner.
-  // Ignore empty/placeholder CMS values so the girl image always shows.
-  const imageSrc =
-    hero.image && hero.image.trim() && !hero.image.includes("home-banner.png")
-      ? hero.image
-      : HERO_IMAGES.programmingBanner;
+  // Use the local theme student image for the homepage hero.
+  const imageSrc = HERO_IMAGES.programmingBanner;
 
   return (
     <ProgrammingHero
@@ -43,7 +39,7 @@ export function Hero() {
       ctaLabel={hero.ctaText || "Find courses"}
       ctaHref={hero.ctaUrl || "/courses"}
       imageSrc={imageSrc}
-      imageAlt={hero.title || settings?.site_name || "ShikshaLab"}
+      imageAlt="Student with laptop"
       stats={buildDefaultStats(courseCount)}
     />
   );

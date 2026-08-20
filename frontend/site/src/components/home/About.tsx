@@ -105,7 +105,7 @@ export function About({ showCta = true }: { showCta?: boolean }) {
           </h2>
           <SectionSwoosh className="mx-0" />
           {bodyDisplay ? (
-            <p className="mt-4 max-w-lg font-body text-[16px] leading-[1.75] text-[#181818] sm:text-[18px]">
+            <p className="mt-4 max-w-lg text-justify font-body text-[16px] leading-[1.75] text-[#181818] sm:text-[18px]">
               {bodyDisplay}
             </p>
           ) : null}
