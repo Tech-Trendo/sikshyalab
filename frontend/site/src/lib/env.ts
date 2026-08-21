@@ -116,39 +116,48 @@ function apiBase(): string {
 
 export function getDashboardUrl(): string {
   const fromNext = readEnv("NEXT_PUBLIC_DASHBOARD_URL");
+  if (fromNext) return fromNext.replace(/\/$/, "");
+
   const lanHost = readEnv("NEXT_PUBLIC_LAN_HOST");
 
   if (typeof window !== "undefined") {
     const { protocol, hostname } = window.location;
-    const isLocal = hostname === "localhost" || hostname === "127.0.0.1";
+    const isLocal = isLoopbackHostname(hostname);
+    const isLan = Boolean(lanHost && hostname === lanHost);
 
     if (lanHost && (hostname === lanHost || readEnv("NEXT_PUBLIC_FORCE_LAN") === "1")) {
       return `${protocol}//${lanHost}:5173`;
     }
-    if (!isLocal) {
-      return `${protocol}//${hostname}:5173`;
+
+    if (!isLocal && !isLan) {
+      // shikshalab.com / www → dash.shikshalab.com
+      const apex = hostname.startsWith("www.") ? hostname.slice(4) : hostname;
+      if (apex === "shikshalab.com" || !hostname.startsWith("dash.")) {
+        return `${protocol}//dash.${apex}`;
+      }
+      return `${protocol}//${hostname}`;
     }
-    if (fromNext) return fromNext.replace(/\/$/, "");
+
     return `${protocol}//${hostname}:5173`;
   }
 
-  if (fromNext) return fromNext.replace(/\/$/, "");
   if (lanHost) return `http://${lanHost}:5173`;
   return "http://localhost:5173";
 }
 
 export function getSiteUrl(): string {
   const fromNext = readEnv("NEXT_PUBLIC_SITE_URL");
+  if (fromNext) return fromNext.replace(/\/$/, "");
+
   const lanHost = readEnv("NEXT_PUBLIC_LAN_HOST");
   if (typeof window !== "undefined") {
     const { protocol, hostname, port } = window.location;
-    const isLocal = hostname === "localhost" || hostname === "127.0.0.1";
+    const isLocal = isLoopbackHostname(hostname);
     if (!isLocal) {
       const suffix = port ? `:${port}` : "";
       return `${protocol}//${hostname}${suffix}`;
     }
   }
-  if (fromNext) return fromNext.replace(/\/$/, "");
   if (lanHost) return `http://${lanHost}:8081`;
   return "http://localhost:8081";
 }

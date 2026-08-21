@@ -7,26 +7,32 @@ function lanHost(): string | undefined {
   return h?.trim() || undefined;
 }
 
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+}
+
 export function getWebUrl(): string {
-  const fromEnv = import.meta.env.VITE_WEB_URL as string | undefined;
+  const fromEnv = (import.meta.env.VITE_WEB_URL as string | undefined)?.trim();
+  if (fromEnv) return fromEnv.replace(/\/$/, "");
+
   if (typeof window !== "undefined") {
     const { protocol, hostname } = window.location;
-    const isLocal = hostname === "localhost" || hostname === "192.168.100.154";
     const lan = lanHost();
-    if (lan && (hostname === lan || !isLocal)) {
-      // Prefer same host as dashboard when on LAN; else configured LAN site host
-      if (!isLocal) return `${protocol}//${hostname}:8081`;
-      return `${protocol}//${lan}:8081`;
+    const isLocal = isLoopbackHost(hostname);
+    const isLan = Boolean(lan && hostname === lan);
+
+    if (!isLocal && !isLan) {
+      // dash.shikshalab.com → https://shikshalab.com
+      if (hostname.startsWith("dash.")) {
+        return `${protocol}//${hostname.slice("dash.".length)}`;
+      }
+      return `${protocol}//${hostname}`;
     }
-    if (!isLocal) {
-      return `${protocol}//${hostname}:8081`;
-    }
-  }
-  if (fromEnv?.trim()) return fromEnv.replace(/\/$/, "");
-  if (typeof window !== "undefined") {
-    const { protocol, hostname } = window.location;
+
+    if (lan) return `${protocol}//${lan}:8081`;
     return `${protocol}//${hostname}:8081`;
   }
+
   return "http://localhost:8081";
 }
 

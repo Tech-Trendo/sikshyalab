@@ -1,11 +1,7 @@
-/**
- * API helpers for auth, profile, settings, notifications, dashboard.
- * Falls back silently when backend/JWT is unavailable.
- */
 
 import { normalizeApiRole } from "@/lib/auth-routes";
 import { courseEndpoints } from "@/lib/api-endpoints";
-import { resolveApiBase } from "@/lib/api-base";
+import { resolveApiBase, resolveDjangoOrigin } from "@/lib/api-base";
 import { resolveMediaUrl } from "@/lib/media-url";
 import { handleDeactivatedHttpResponse } from "@/lib/account-deactivated";
 
@@ -730,12 +726,15 @@ export function mapApiNotification(n: ApiNotification) {
 }
 
 export function resolveNotificationsWsUrl(accessToken: string): string | null {
-  const env = (import.meta as { env?: { VITE_WS_URL?: string; VITE_DJANGO_ORIGIN?: string; VITE_API_URL?: string } }).env;
-  const explicit = env?.VITE_WS_URL;
-  const origin = env?.VITE_DJANGO_ORIGIN || env?.VITE_API_URL || "http://192.168.100.154:8000";
+  const env = (import.meta as {
+    env?: { VITE_WS_URL?: string; VITE_DJANGO_ORIGIN?: string; VITE_API_URL?: string };
+  }).env;
+  const explicit = env?.VITE_WS_URL?.trim();
   let base = explicit;
+
   if (!base) {
     try {
+      const origin = resolveDjangoOrigin();
       const u = new URL(origin);
       u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
       u.pathname = "/ws/notifications/";
@@ -744,7 +743,24 @@ export function resolveNotificationsWsUrl(accessToken: string): string | null {
     } catch {
       return null;
     }
+  } else {
+    // Pages served over HTTPS must use wss:// even if env still says ws://
+    try {
+      const u = new URL(base);
+      if (
+        (typeof window !== "undefined" && window.location.protocol === "https:") ||
+        u.protocol === "https:"
+      ) {
+        if (u.protocol === "ws:" || u.protocol === "http:") {
+          u.protocol = "wss:";
+        }
+      }
+      base = u.toString();
+    } catch {
+      return null;
+    }
   }
+
   const sep = base.includes("?") ? "&" : "?";
   return `${base}${sep}token=${encodeURIComponent(accessToken)}`;
 }

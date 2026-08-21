@@ -100,6 +100,7 @@ export async function refreshAccessToken(): Promise<string | null> {
     try {
       const res = await fetch(`${apiBase()}/accounts/auth/token/refresh/`, {
         method: "POST",
+        credentials: "include",
         headers: { Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify({ refresh }),
       });
@@ -133,6 +134,7 @@ export async function createLoginHandoff(): Promise<string | null> {
   try {
     const res = await fetch(`${apiBase()}/accounts/auth/handoff/`, {
       method: "POST",
+      credentials: "include",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
@@ -277,6 +279,7 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response | nu
 
     let res = await fetch(`${apiBase()}${path}`, {
       ...init,
+      credentials: init.credentials ?? "include",
       headers: buildHeaders(token),
     });
     if (res.status === 401) {
@@ -284,6 +287,7 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response | nu
       if (!token) return res;
       res = await fetch(`${apiBase()}${path}`, {
         ...init,
+        credentials: init.credentials ?? "include",
         headers: buildHeaders(token),
       });
     }
@@ -308,6 +312,7 @@ export async function apiLogin(email: string, password: string): Promise<{
   try {
     res = await fetch(`${apiBase()}/accounts/auth/login/`, {
       method: "POST",
+      credentials: "include",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
@@ -586,6 +591,7 @@ export async function uploadCourseThumbnail(slug: string, file: File): Promise<s
     form.append("thumbnail", file);
     const res = await fetch(`${apiBase()}/courses/courses/${slug}/upload-thumbnail/`, {
       method: "POST",
+      credentials: "include",
       headers: { Authorization: `Bearer ${token}` },
       body: form,
     });

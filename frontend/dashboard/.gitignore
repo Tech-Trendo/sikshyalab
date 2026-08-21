@@ -18,6 +18,8 @@ src/routeTree.gen.ts
 *.local
 .env
 !.env.example
+.env.development
+.env.production
 
 # Wrangler / Cloudflare
 .wrangler/

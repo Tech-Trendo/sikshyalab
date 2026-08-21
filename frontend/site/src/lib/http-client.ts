@@ -75,6 +75,7 @@ export async function httpRequest<T>(
   try {
     res = await fetch(url, {
       ...fetchInit,
+      credentials: fetchInit.credentials ?? "include",
       headers: {
         Accept: "application/json",
         ...(fetchInit.body ? { "Content-Type": "application/json" } : {}),

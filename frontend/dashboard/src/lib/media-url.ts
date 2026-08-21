@@ -1,4 +1,4 @@
-import { resolveApiBase } from "./api-base";
+import { resolveApiBase, resolveDjangoOrigin } from "./api-base";
 
 function isLoopbackHostname(hostname: string): boolean {
   return (
@@ -9,13 +9,16 @@ function isLoopbackHostname(hostname: string): boolean {
   );
 }
 
-/** Django origin from the same env var as API calls (`VITE_API_URL`). */
+/** Django origin from the same env var as API calls (`VITE_API_URL` / `VITE_DJANGO_ORIGIN`). */
 export function djangoOrigin(): string {
-  const api = resolveApiBase();
   try {
-    return new URL(api).origin;
+    return resolveDjangoOrigin();
   } catch {
-    return "http://192.168.100.154:8000";
+    try {
+      return new URL(resolveApiBase()).origin;
+    } catch {
+      return "http://127.0.0.1:8000";
+    }
   }
 }
 

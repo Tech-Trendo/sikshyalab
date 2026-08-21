@@ -31,8 +31,8 @@ npm run dev:dashboard          # http://localhost:5173
 First-time env (once per machine):
 
 ```bash
-cp frontend/site/.env.example frontend/site/.env
-cp frontend/dashboard/.env.example frontend/dashboard/.env
+cp frontend/site/.env.example frontend/site/.env.local
+cp frontend/dashboard/.env.example frontend/dashboard/.env.local
 # backend: copy backend/.env.example → backend/.env and set DB_* 
 ```
 
@@ -55,9 +55,70 @@ cd backend && python manage.py runserver 0.0.0.0:8000
 python manage.py seed_superadmin
 ```
 
-## Split PCs (backend on one machine, frontend on another)
+## Production (VPS)
 
-Backend PC IP (this project): **`192.168.100.154`**
+All three apps run on the same VPS behind HTTPS (e.g. Nginx + TLS):
+
+| App | Public URL | Process |
+|-----|------------|---------|
+| Public site | `https://shikshalab.com` | Next.js (`next start`) |
+| Dashboard | `https://dash.shikshalab.com` | Static build / Node server for Vite app |
+| API | `https://app.shikshalab.com` | Django (gunicorn/daphne) + Channels for `wss://` |
+
+Put production env on the VPS (systemd/env files or each app’s `.env` — do not commit secrets):
+
+**`frontend/site/.env.production` / process env**
+```bash
+NEXT_PUBLIC_API_URL=https://app.shikshalab.com/api/v1
+NEXT_PUBLIC_DJANGO_ORIGIN=https://app.shikshalab.com
+API_PROXY_TARGET=https://app.shikshalab.com
+NEXT_PUBLIC_DASHBOARD_URL=https://dash.shikshalab.com
+NEXT_PUBLIC_SITE_URL=https://shikshalab.com
+```
+
+**`frontend/dashboard/.env.production` / process env**
+```bash
+VITE_API_URL=https://app.shikshalab.com/api/v1
+VITE_DJANGO_ORIGIN=https://app.shikshalab.com
+VITE_WS_URL=wss://app.shikshalab.com/ws/notifications/
+VITE_WEB_URL=https://shikshalab.com
+```
+
+**`backend/.env`**
+```bash
+FRONTEND_URL=https://shikshalab.com
+SITE_URL=https://app.shikshalab.com
+CORS_ALLOWED_ORIGINS=https://shikshalab.com,https://www.shikshalab.com,https://dash.shikshalab.com
+CSRF_TRUSTED_ORIGINS=https://shikshalab.com,https://www.shikshalab.com,https://dash.shikshalab.com,https://app.shikshalab.com
+MEDIA_COOKIE_SAMESITE=None
+MEDIA_COOKIE_SECURE=true
+ALLOWED_HOSTS=app.shikshalab.com,localhost
+```
+
+Build on the VPS (or CI → rsync):
+
+```bash
+# API
+cd backend && .venv/bin/pip install -r requirements/production.txt
+# run migrations, collectstatic, then gunicorn/daphne
+
+# Site
+cd frontend/site && npm ci && npm run build && npm run start
+# or: next start -p 8081 behind Nginx
+
+# Dashboard
+cd frontend/dashboard && npm ci && npm run build
+# serve dist/ behind Nginx at dash.shikshalab.com
+```
+
+Nginx should terminate TLS and proxy:
+- `shikshalab.com` → Next.js
+- `dash.shikshalab.com` → dashboard static/Node
+- `app.shikshalab.com` → Django HTTP + WebSocket upgrade for `/ws/`
+
+Local defaults live in each app’s `.env.example` / `.env.development` / `.env.local.example` (loopback `127.0.0.1:8000`).
+
+## Split PCs (backend on one machine, frontend on another)
 
 1. **Backend PC** — start Django on all interfaces:
    ```bash
@@ -68,9 +129,9 @@ Backend PC IP (this project): **`192.168.100.154`**
 
 2. **Frontend PC** — copy examples and point API at the backend IP:
    ```bash
-   cp site/.env.example site/.env
-   cp dashboard/.env.example dashboard/.env
-   # edit both .env files: set API/origin to http://<backend-ip>:8000
+   cp site/.env.example site/.env.local
+   cp dashboard/.env.example dashboard/.env.local
+   # edit both: set API/origin to http://<backend-ip>:8000
    ```
 
    Then:
@@ -80,7 +141,7 @@ Backend PC IP (this project): **`192.168.100.154`**
    npm run dev:dashboard   # http://localhost:5173
    ```
 
-3. If the backend IP changes, update it in `site/.env` and `dashboard/.env`.
+3. If the backend IP changes, update it in `site/.env.local` and `dashboard/.env.local`.
 
 ## Auth (no public registration)
 
@@ -90,15 +151,15 @@ Backend PC IP (this project): **`192.168.100.154`**
 4. First login requires a password change.
 5. Forgot password: **/forgot-password** → email link → **/reset-password**.
 
-Env (copy `.env.example` → `.env` in each app):
+Env (copy `.env.example` → `.env.local` in each app):
 
 | File | Variable | Value |
 |------|----------|-------|
-| `site/.env` | `NEXT_PUBLIC_API_URL` | `http://:8000/api/v1` (or backend LAN IP) |
-| `site/.env` | `NEXT_PUBLIC_SITE_URL` | `http://localhost:8081` |
-| `site/.env` | `NEXT_PUBLIC_DASHBOARD_URL` | `http://localhost:5173` |
-| `dashboard/.env` | `VITE_API_URL` | `http://127.0.0.1:8000/api/v1` (or backend LAN IP) |
-| `dashboard/.env` | `VITE_WEB_URL` | `http://localhost:8081` |
+| `site/.env.local` | `NEXT_PUBLIC_API_URL` | `http://127.0.0.1:8000/api/v1` (or backend LAN IP) |
+| `site/.env.local` | `NEXT_PUBLIC_SITE_URL` | `http://localhost:8081` |
+| `site/.env.local` | `NEXT_PUBLIC_DASHBOARD_URL` | `http://localhost:5173` |
+| `dashboard/.env.local` | `VITE_API_URL` | `http://127.0.0.1:8000/api/v1` (or backend LAN IP) |
+| `dashboard/.env.local` | `VITE_WEB_URL` | `http://localhost:8081` |
 | `backend/.env` | `FRONTEND_URL` | `http://localhost:8081` |
 | `backend/.env` | `SUPERADMIN_EMAIL` / `SUPERADMIN_PASSWORD` | seeder defaults |
 
