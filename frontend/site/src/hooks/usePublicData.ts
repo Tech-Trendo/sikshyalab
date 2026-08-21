@@ -299,6 +299,8 @@ export function usePublicData() {
           title: g.title,
           category: g.category || "",
           image: resolveMediaUrl(g.image) || "",
+          event: g.event ?? undefined,
+          event_title: g.event_title,
         }))
         .filter((g) => Boolean(g.image));
     },

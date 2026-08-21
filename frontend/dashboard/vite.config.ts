@@ -1,7 +1,4 @@
-// @lovable.dev/vite-tanstack-config already includes the following — do NOT add them manually
-// or the app will break with duplicate plugins:
-//   - TanStack Start plugins, React, Tailwind, path aliases, VITE_* client injection, etc.
-// You can pass additional config via defineConfig({ vite: { ... } }).
+
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,6 +35,9 @@ const djangoTarget = (
 export default defineConfig({
   tanstackStart: {
     server: { entry: "server" },
+  },
+  nitro: {
+    preset: "node-server",
   },
   vite: {
     server: {

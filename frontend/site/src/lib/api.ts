@@ -279,7 +279,7 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response | nu
 
     let res = await fetch(`${apiBase()}${path}`, {
       ...init,
-      credentials: init.credentials ?? "include",
+      credentials: init?.credentials ?? "include",
       headers: buildHeaders(token),
     });
     if (res.status === 401) {
@@ -287,7 +287,7 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response | nu
       if (!token) return res;
       res = await fetch(`${apiBase()}${path}`, {
         ...init,
-        credentials: init.credentials ?? "include",
+        credentials: init?.credentials ?? "include",
         headers: buildHeaders(token),
       });
     }

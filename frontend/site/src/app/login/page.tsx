@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Eye, EyeOff } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { toast } from "sonner";
 import { useAuth, type AuthUser } from "@/components/dashboard/AuthContext";
 import { dashboardPathForRole, rememberEmailRole } from "@/lib/auth-routes";
@@ -48,7 +48,7 @@ async function goToDashboard(user: AuthUser) {
   window.location.href = `${dash}/auth/callback?${qs.toString()}#${hash.toString()}`;
 }
 
-function Login() {
+function LoginForm() {
   const { signIn: signInUser } = useAuth();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
@@ -173,4 +173,10 @@ function Login() {
   );
 }
 
-export default Login;
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="py-24 text-center text-sm text-brand-body">Loading…</div>}>
+      <LoginForm />
+    </Suspense>
+  );
+}
