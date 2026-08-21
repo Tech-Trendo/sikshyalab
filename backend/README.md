@@ -245,18 +245,27 @@ Standard JSON envelope from many endpoints:
 
 ## Production notes
 
-1. **Secrets** — set a strong `SECRET_KEY`; never commit `.env`.
+1. **Secrets** — generate a strong `SECRET_KEY` (50+ chars); never commit `.env`. Change `SUPERADMIN_PASSWORD` before any seed command.
 2. **Settings** — use `DJANGO_SETTINGS_MODULE=config.settings.production`.
-3. **Database** — Postgres via `DB_*` env vars (install Postgres on the host or a managed DB); enable connection pooling / `DB_CONN_MAX_AGE`.
-4. **HTTPS** — `SECURE_SSL_REDIRECT`, HSTS, and secure cookies are configured in production settings.
-5. **Static / media** — `collectstatic` + WhiteNoise for static; set `USE_S3=true` + DataHub `AWS_*` for object storage (`django-storages`).
-6. **CORS** — set `CORS_ALLOWED_ORIGINS` to your frontend origin(s); disable `CORS_ALLOW_ALL_ORIGINS` in production.
-7. **Redis / Celery** — optional for async tasks; install Redis on the host if needed (not via Docker).
-8. **Sentry** — optional `SENTRY_DSN` for error tracking.
-9. **Migrations** — always run `migrate` before traffic; prefer zero-downtime expand/contract for large schema changes.
-10. **Backups** — schedule Postgres backups and media backups.
-11. **Throttling** — tune `THROTTLE_ANON` / `THROTTLE_USER` in production settings.
-12. **Workers** — run Gunicorn with multiple workers behind a reverse proxy (Nginx / Traefik).
+3. **Hosts / CSRF** — set real `ALLOWED_HOSTS` (no `*`, no scheme). Set `CSRF_TRUSTED_ORIGINS` with full `https://…` origins (API + SPA hosts).
+4. **Database** — Postgres via `DB_*` env vars; enable connection pooling / `DB_CONN_MAX_AGE`.
+5. **HTTPS** — `SECURE_SSL_REDIRECT`, HSTS, and secure cookies are configured in production settings.
+6. **Static / media** — `collectstatic` + WhiteNoise for static. For media: `USE_S3=true` + DataHub `AWS_*`, or `USE_S3=false` for local disk on a first deploy.
+7. **CORS** — set `CORS_ALLOWED_ORIGINS` to your frontend origin(s); keep `CORS_ALLOW_ALL_ORIGINS` off in production.
+8. **Redis** — required in production (cache + Channels + Celery). Install Redis on the host (`apt install redis-server` or equivalent).
+9. **ASGI / WebSockets** — this app serves HTTP **and** `ws/notifications/` via Django Channels. Prefer **Daphne** (not Gunicorn alone):
+
+   ```bash
+   daphne -b 127.0.0.1 -p 8000 config.asgi:application
+   ```
+
+   Put Nginx/Traefik in front with TLS and a WebSocket upgrade for `/ws/`. Gunicorn is WSGI-only and will not handle Channels; use Daphne (or Uvicorn) for the app process. Optional later: Gunicorn for HTTP + a separate Daphne process for `/ws/` only.
+10. **Celery** — run worker + beat when you need email digests / async video jobs (`celery -A config worker` / `beat`).
+11. **Sentry** — optional `SENTRY_DSN` for error tracking.
+12. **Migrations** — always run `migrate` before traffic; prefer zero-downtime expand/contract for large schema changes.
+13. **Backups** — schedule Postgres backups and media backups.
+14. **Throttling** — tune `THROTTLE_ANON` / `THROTTLE_USER` in production settings.
+15. **Install** — on the VPS use `pip install -r requirements/production.txt` (not the root `requirements.txt`, which also pulls dev tools).
 
 ## Management commands
 
